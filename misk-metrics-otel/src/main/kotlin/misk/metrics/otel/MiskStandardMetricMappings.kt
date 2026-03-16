@@ -1,40 +1,47 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.metrics.otel
 
-/**
- * Defines the legacy Prometheus name mappings for misk-owned standard metrics. These are used in
- * bridge mode to dual-write the OTel canonical metric alongside the legacy Prometheus name.
- *
- * When misk interceptors create metrics via PalMetrics, they use the legacy names directly
- * (e.g., `histo_http_request_latency_ms`). In a future migration to OTel-canonical names, this
- * mapping would be used by the bridge to produce both versions from a single observation.
- */
-object MiskStandardMetricMappings {
-  /**
-   * Map of OTel semantic convention metric name to its legacy Prometheus equivalent.
-   * Currently a reference for future use — the interceptors still use legacy names directly.
-   */
-  val mappings = mapOf(
-    // Inbound HTTP
-    "http.server.request.duration" to LegacyMetricMapping(
-      legacyName = "histo_http_request_latency_ms",
-      labelMapping = mapOf(
-        "http.route" to "action",
-        "server.address" to "caller",
-        "http.response.status_code" to "code",
-      ),
-    ),
-    // Outbound HTTP client
-    "http.client.request.duration" to LegacyMetricMapping(
-      legacyName = "histo_client_http_request_latency_ms",
-      labelMapping = mapOf(
-        "http.route" to "action",
-        "http.response.status_code" to "code",
-      ),
-    ),
-  )
-}
+import misk.annotation.ExperimentalMiskApi
+import misk.inject.KAbstractModule
 
-data class LegacyMetricMapping(
-  val legacyName: String,
-  val labelMapping: Map<String, String> = emptyMap(),
-)
+/**
+ * Installs canonical OTel metric mappings for misk-owned standard metrics. Each mapping is
+ * registered as a Guice multibinding of [CanonicalMetricMapping].
+ *
+ * In bridge mode, these cause the bridge to additionally write the OTel canonical metric (with
+ * remapped labels) alongside the original metric name. The caller cannot intercept or transform
+ * canonical metrics.
+ *
+ * Install this module alongside [BridgeMetricsModule] to get canonical OTel names for misk's
+ * standard HTTP metrics.
+ */
+@ExperimentalMiskApi
+class MiskStandardMetricMappingsModule : KAbstractModule() {
+  override fun configure() {
+    // Inbound HTTP request latency
+    multibind<CanonicalMetricMapping>().toInstance(
+      CanonicalMetricMapping(
+        legacyName = "histo_http_request_latency_ms",
+        canonicalName = "http.server.request.duration",
+        labelMapping = mapOf(
+          "action" to "http.route",
+          "caller" to "server.address",
+          "code" to "http.response.status_code",
+        ),
+      )
+    )
+
+    // Outbound HTTP client latency
+    multibind<CanonicalMetricMapping>().toInstance(
+      CanonicalMetricMapping(
+        legacyName = "histo_client_http_request_latency_ms",
+        canonicalName = "http.client.request.duration",
+        labelMapping = mapOf(
+          "action" to "http.route",
+          "code" to "http.response.status_code",
+        ),
+      )
+    )
+  }
+}

@@ -8,37 +8,51 @@ import jakarta.inject.Singleton
 import misk.annotation.ExperimentalMiskApi
 import misk.inject.KAbstractModule
 import misk.metrics.MetricsModule
-import misk.metrics.pal.MetricNameTransformer
 import misk.metrics.pal.PalMetrics
-import misk.metrics.pal.backend.PrometheusMetricsBackend
 
 /**
- * Bridge metrics module (Mode 2). OTel is the primary engine; legacy Prometheus metrics are also
- * emitted via dual-write. Both `PalMetrics` (backed by the bridge) and `misk.metrics.v2.Metrics`
- * (backed by Prometheus) are available.
+ * Bridge metrics module (Mode 2). Misk's internal metrics are written to OTel. App metrics using
+ * `v2.Metrics` continue to go to Prometheus unchanged.
  *
- * The caller must provide a binding for [Meter]. Optionally bind [MetricNameTransformer] to
- * customize legacy metric names (e.g., adding a prefix). Defaults to identity.
+ * The metric pipeline in bridge mode:
+ * 1. Every misk metric goes through the caller's [MetricNameMapper] — can transform or drop
+ * 2. [misk.metrics.pal.PrometheusNameNormalizer] runs on the output
+ * 3. Written to OTel (unless dropped)
+ * 4. If the metric has a [CanonicalMetricMapping] (via multibinding), the canonical OTel version
+ *    is additionally written with remapped labels. Canonical metrics cannot be intercepted.
  *
- * This module also installs [MetricsModule] to provide v2.Metrics, v1.Metrics, and
- * CollectorRegistry for legacy consumers.
+ * The caller must provide:
+ * - A binding for [Meter]
+ *
+ * The caller may optionally:
+ * - Provide a [MetricNameMapper] constructor param for pipeline-specific naming
+ * - Install [MiskStandardMetricMappingsModule] for canonical OTel names
+ * - Multibind additional [CanonicalMetricMapping]s for custom canonical mappings
+ *
+ * This module also installs [MetricsModule] so `v2.Metrics`, `v1.Metrics`, and
+ * `CollectorRegistry` remain available for app code.
+ *
+ * **Open question**: Can OTel metrics with mapped names be equivalent enough to Prometheus metrics
+ * they replace? Differences in histogram bucket semantics, counter reset behavior, and label
+ * handling may cause dashboard/alert divergence even with correct name mapping.
  */
 @ExperimentalMiskApi
 class BridgeMetricsModule(
-  private val nameTransformer: MetricNameTransformer = MetricNameTransformer.IDENTITY,
+  private val nameMapper: MetricNameMapper = MetricNameMapper.IDENTITY,
 ) : KAbstractModule() {
   override fun configure() {
     requireBinding<Meter>()
     install(MetricsModule())
+    // Ensure the multibinding exists even if no canonical mappings are installed.
+    newMultibinder<CanonicalMetricMapping>()
   }
 
   @Provides @Singleton
   fun providePalMetrics(
     meter: Meter,
-    v2Metrics: misk.metrics.v2.Metrics,
+    canonicalMappings: Set<CanonicalMetricMapping>,
   ): PalMetrics {
     val otelBackend = OtelMetricsBackend(meter)
-    val prometheusBackend = PrometheusMetricsBackend(v2Metrics)
-    return PalMetrics.factory(BridgeMetricsBackend(otelBackend, prometheusBackend, nameTransformer))
+    return PalMetrics.factory(BridgeMetricsBackend(otelBackend, canonicalMappings, nameMapper))
   }
 }

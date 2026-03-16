@@ -4,17 +4,12 @@ package misk.metrics.otel
 
 import io.opentelemetry.sdk.metrics.SdkMeterProvider
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader
-import io.prometheus.client.CollectorRegistry
-import misk.metrics.pal.MetricNameTransformer
-import misk.metrics.pal.backend.PrometheusMetricsBackend
-import misk.metrics.v2.Metrics
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class BridgeMetricsBackendTest {
   private lateinit var metricReader: InMemoryMetricReader
-  private lateinit var registry: CollectorRegistry
   private lateinit var bridge: BridgeMetricsBackend
 
   @BeforeEach
@@ -25,57 +20,96 @@ class BridgeMetricsBackendTest {
       .build()
     val meter = meterProvider.get("test")
 
-    registry = CollectorRegistry()
-    val v2Metrics = Metrics.factory(registry)
-
     bridge = BridgeMetricsBackend(
       otel = OtelMetricsBackend(meter),
-      prometheus = PrometheusMetricsBackend(v2Metrics),
-      nameTransformer = MetricNameTransformer { "cash_$it" },
+      canonicalMappings = setOf(
+        CanonicalMetricMapping(
+          legacyName = "histo_http_request_latency_ms",
+          canonicalName = "http.server.request.duration",
+          labelMapping = mapOf("action" to "http.route", "code" to "http.response.status_code"),
+        ),
+      ),
+      nameMapper = MetricNameMapper { "cash_$it" },
     )
   }
 
   @Test
-  fun counterDualWrites() {
+  fun counterWritesToOtelWithMappedName() {
     val counter = bridge.createCounter("my_counter", "test", listOf("action"))
     counter.labels("foo").inc()
     counter.labels("foo").inc(3.0)
 
-    // Verify OTel side
     val otelMetrics = metricReader.collectAllMetrics()
-    assertThat(otelMetrics.find { it.name == "my_counter" }).isNotNull
-
-    // Verify Prometheus side with transformed name
-    val promSample = registry.metricFamilySamples().asSequence()
-      .find { it.name == "cash_my_counter" }
-    assertThat(promSample).isNotNull
+    assertThat(otelMetrics.find { it.name == "cash_my_counter" }).isNotNull
   }
 
   @Test
-  fun histogramDualWrites() {
+  fun histogramWithCanonicalMapping() {
     val histogram = bridge.createHistogram(
-      "my_histo", "test", listOf("action"), listOf(10.0, 50.0, 100.0),
+      "histo_http_request_latency_ms", "test", listOf("action", "code"), listOf(10.0, 50.0),
     )
-    histogram.labels("bar").observe(25.0)
+    histogram.labels("MyAction", "200").observe(25.0)
 
-    // Verify OTel side
     val otelMetrics = metricReader.collectAllMetrics()
-    assertThat(otelMetrics.find { it.name == "my_histo" }).isNotNull
 
-    // Verify Prometheus side with transformed name
-    val promSample = registry.metricFamilySamples().asSequence()
-      .find { it.name == "cash_my_histo" }
-    assertThat(promSample).isNotNull
+    // Original name goes through mapper
+    assertThat(otelMetrics.find { it.name == "cash_histo_http_request_latency_ms" }).isNotNull
+
+    // Canonical name is also written (not affected by mapper)
+    assertThat(otelMetrics.find { it.name == "http.server.request.duration" }).isNotNull
   }
 
   @Test
-  fun nameTransformerApplied() {
-    bridge.createCounter("request_total", "test", listOf())
-      .labels().inc()
+  fun mapperCanDropMetric() {
+    val reader = InMemoryMetricReader.create()
+    val dropBridge = BridgeMetricsBackend(
+      otel = OtelMetricsBackend(
+        SdkMeterProvider.builder().registerMetricReader(reader).build().get("test2")
+      ),
+      canonicalMappings = emptySet(),
+      nameMapper = MetricNameMapper { null },
+    )
 
-    // _total should be stripped by PrometheusNameNormalizer, then prefixed by transformer
-    val promSample = registry.metricFamilySamples().asSequence()
-      .find { it.name == "cash_request" }
-    assertThat(promSample).isNotNull
+    val counter = dropBridge.createCounter("dropped_counter", "test", listOf())
+    counter.labels().inc()
+
+    val otelMetrics = reader.collectAllMetrics()
+    assertThat(otelMetrics.find { it.name == "dropped_counter" }).isNull()
+  }
+
+  @Test
+  fun canonicalMappingStillWritesWhenMapperDrops() {
+    val reader = InMemoryMetricReader.create()
+    val dropBridge = BridgeMetricsBackend(
+      otel = OtelMetricsBackend(
+        SdkMeterProvider.builder().registerMetricReader(reader).build().get("test3")
+      ),
+      canonicalMappings = setOf(
+        CanonicalMetricMapping(
+          legacyName = "histo_http_request_latency_ms",
+          canonicalName = "http.server.request.duration",
+          labelMapping = mapOf("action" to "http.route"),
+        ),
+      ),
+      nameMapper = MetricNameMapper { null },
+    )
+
+    val histogram = dropBridge.createHistogram(
+      "histo_http_request_latency_ms", "test", listOf("action"), listOf(10.0),
+    )
+    histogram.labels("MyAction").observe(25.0)
+
+    val otelMetrics = reader.collectAllMetrics()
+    assertThat(otelMetrics.find { it.name == "histo_http_request_latency_ms" }).isNull()
+    assertThat(otelMetrics.find { it.name == "http.server.request.duration" }).isNotNull
+  }
+
+  @Test
+  fun totalSuffixStripped() {
+    val counter = bridge.createCounter("request_total", "test", listOf())
+    counter.labels().inc()
+
+    val otelMetrics = metricReader.collectAllMetrics()
+    assertThat(otelMetrics.find { it.name == "cash_request" }).isNotNull
   }
 }

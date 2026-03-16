@@ -3,7 +3,6 @@
 package misk.metrics.otel
 
 import misk.annotation.ExperimentalMiskApi
-import misk.metrics.pal.MetricNameTransformer
 import misk.metrics.pal.PalCounter
 import misk.metrics.pal.PalGauge
 import misk.metrics.pal.PalHistogram
@@ -13,53 +12,72 @@ import misk.metrics.pal.PrometheusNameNormalizer
 import misk.metrics.pal.backend.MetricsBackend
 
 /**
- * Bridge [MetricsBackend] that dual-writes to both OTel (primary) and Prometheus (legacy).
- * Every recording operation writes to both backends. The [nameTransformer] is applied to metric
- * names on the Prometheus side for pipeline-specific conventions (e.g., adding a prefix).
+ * Bridge [MetricsBackend] that writes all misk metrics to OTel. The pipeline for each metric:
  *
- * Standard metric name mappings (misk-owned metrics like `histo_http_request_latency_ms`) are
- * handled by the caller via [MiskStandardMetricMappings] which produces the legacy name.
+ * 1. The caller's [MetricNameMapper] runs — can transform the name or return null to drop it.
+ * 2. [PrometheusNameNormalizer] runs on the mapper output (e.g., `_total` stripping).
+ * 3. The metric is written to OTel with the resulting name (unless dropped).
+ * 4. If the metric has a [CanonicalMetricMapping], the canonical OTel version is additionally
+ *    written with remapped labels. The caller cannot intercept canonical metrics.
+ *
+ * App metrics (using `v2.Metrics` directly) are unaffected — they still go to Prometheus.
  */
 @ExperimentalMiskApi
 class BridgeMetricsBackend(
   private val otel: MetricsBackend,
-  private val prometheus: MetricsBackend,
-  private val nameTransformer: MetricNameTransformer = MetricNameTransformer.IDENTITY,
+  private val canonicalMappings: Map<String, CanonicalMetricMapping>,
+  private val nameMapper: MetricNameMapper = MetricNameMapper.IDENTITY,
 ) : MetricsBackend {
 
-  private fun legacyName(name: String): String =
-    nameTransformer.transform(PrometheusNameNormalizer.normalize(name))
+  constructor(
+    otel: MetricsBackend,
+    canonicalMappings: Set<CanonicalMetricMapping>,
+    nameMapper: MetricNameMapper = MetricNameMapper.IDENTITY,
+  ) : this(otel, canonicalMappings.associateBy { it.legacyName }, nameMapper)
+
+  private fun mapName(name: String): String? {
+    val mapped = nameMapper.map(name) ?: return null
+    return PrometheusNameNormalizer.normalize(mapped)
+  }
 
   override fun createCounter(name: String, help: String, labelNames: List<String>): PalCounter {
-    val otelCounter = otel.createCounter(name, help, labelNames)
-    val promCounter = prometheus.createCounter(legacyName(name), help, labelNames)
-    return DualWriteCounter(otelCounter, promCounter)
+    val mappedName = mapName(name)
+    val otelCounter = mappedName?.let { otel.createCounter(it, help, labelNames) }
+    val canonical = canonicalMappings[name]
+    val canonicalCounter = canonical?.let {
+      otel.createCounter(it.canonicalName, help, it.remapLabelNames(labelNames))
+    }
+    return BridgeCounter(otelCounter, canonicalCounter, canonical, labelNames)
   }
 
   override fun createGauge(name: String, help: String, labelNames: List<String>): PalGauge {
-    val otelGauge = otel.createGauge(name, help, labelNames)
-    val promGauge = prometheus.createGauge(legacyName(name), help, labelNames)
-    return DualWriteGauge(otelGauge, promGauge)
+    val mappedName = mapName(name)
+    val otelGauge = mappedName?.let { otel.createGauge(it, help, labelNames) }
+    val canonical = canonicalMappings[name]
+    val canonicalGauge = canonical?.let {
+      otel.createGauge(it.canonicalName, help, it.remapLabelNames(labelNames))
+    }
+    return BridgeGauge(otelGauge, canonicalGauge, canonical, labelNames)
   }
 
-  override fun createPeakGauge(
-    name: String,
-    help: String,
-    labelNames: List<String>,
-  ): PalPeakGauge {
-    val otelPeakGauge = otel.createPeakGauge(name, help, labelNames)
-    val promPeakGauge = prometheus.createPeakGauge(legacyName(name), help, labelNames)
-    return DualWritePeakGauge(otelPeakGauge, promPeakGauge)
+  override fun createPeakGauge(name: String, help: String, labelNames: List<String>): PalPeakGauge {
+    val mappedName = mapName(name)
+    val otelPeakGauge = mappedName?.let { otel.createPeakGauge(it, help, labelNames) }
+    val canonical = canonicalMappings[name]
+    val canonicalPeakGauge = canonical?.let {
+      otel.createPeakGauge(it.canonicalName, help, it.remapLabelNames(labelNames))
+    }
+    return BridgePeakGauge(otelPeakGauge, canonicalPeakGauge, canonical, labelNames)
   }
 
-  override fun createProvidedGauge(
-    name: String,
-    help: String,
-    labelNames: List<String>,
-  ): PalProvidedGauge {
-    val otelProvidedGauge = otel.createProvidedGauge(name, help, labelNames)
-    val promProvidedGauge = prometheus.createProvidedGauge(legacyName(name), help, labelNames)
-    return DualWriteProvidedGauge(otelProvidedGauge, promProvidedGauge)
+  override fun createProvidedGauge(name: String, help: String, labelNames: List<String>): PalProvidedGauge {
+    val mappedName = mapName(name)
+    val otelProvidedGauge = mappedName?.let { otel.createProvidedGauge(it, help, labelNames) }
+    val canonical = canonicalMappings[name]
+    val canonicalProvidedGauge = canonical?.let {
+      otel.createProvidedGauge(it.canonicalName, help, it.remapLabelNames(labelNames))
+    }
+    return BridgeProvidedGauge(otelProvidedGauge, canonicalProvidedGauge, canonical, labelNames)
   }
 
   override fun createHistogram(
@@ -68,71 +86,95 @@ class BridgeMetricsBackend(
     labelNames: List<String>,
     buckets: List<Double>,
   ): PalHistogram {
-    val otelHistogram = otel.createHistogram(name, help, labelNames, buckets)
-    val promHistogram = prometheus.createHistogram(legacyName(name), help, labelNames, buckets)
-    return DualWriteHistogram(otelHistogram, promHistogram)
+    val mappedName = mapName(name)
+    val otelHistogram = mappedName?.let { otel.createHistogram(it, help, labelNames, buckets) }
+    val canonical = canonicalMappings[name]
+    val canonicalHistogram = canonical?.let {
+      otel.createHistogram(it.canonicalName, help, it.remapLabelNames(labelNames), buckets)
+    }
+    return BridgeHistogram(otelHistogram, canonicalHistogram, canonical, labelNames)
   }
 }
 
-private class DualWriteCounter(
-  private val otel: PalCounter,
-  private val prom: PalCounter,
+/** Remap label names according to the canonical mapping. Unmapped labels pass through as-is. */
+private fun CanonicalMetricMapping.remapLabelNames(labelNames: List<String>): List<String> =
+  labelNames.map { labelMapping[it] ?: it }
+
+
+private class BridgeCounter(
+  private val otel: PalCounter?,
+  private val canonical: PalCounter?,
+  private val mapping: CanonicalMetricMapping?,
+  private val labelNames: List<String>,
 ) : PalCounter {
   override fun labels(vararg labelValues: String) = object : PalCounter.Child {
-    private val otelChild = otel.labels(*labelValues)
-    private val promChild = prom.labels(*labelValues)
+    private val otelChild = otel?.labels(*labelValues)
+    private val canonicalChild = canonical?.labels(*mapping.remapValues(labelNames, labelValues))
     override fun inc(amount: Double) {
-      otelChild.inc(amount)
-      promChild.inc(amount)
+      otelChild?.inc(amount)
+      canonicalChild?.inc(amount)
     }
   }
 }
 
-private class DualWriteGauge(
-  private val otel: PalGauge,
-  private val prom: PalGauge,
+private class BridgeGauge(
+  private val otel: PalGauge?,
+  private val canonical: PalGauge?,
+  private val mapping: CanonicalMetricMapping?,
+  private val labelNames: List<String>,
 ) : PalGauge {
   override fun labels(vararg labelValues: String) = object : PalGauge.Child {
-    private val otelChild = otel.labels(*labelValues)
-    private val promChild = prom.labels(*labelValues)
-    override fun set(value: Double) { otelChild.set(value); promChild.set(value) }
-    override fun inc(amount: Double) { otelChild.inc(amount); promChild.inc(amount) }
-    override fun dec(amount: Double) { otelChild.dec(amount); promChild.dec(amount) }
+    private val otelChild = otel?.labels(*labelValues)
+    private val canonicalChild = canonical?.labels(*mapping.remapValues(labelNames, labelValues))
+    override fun set(value: Double) { otelChild?.set(value); canonicalChild?.set(value) }
+    override fun inc(amount: Double) { otelChild?.inc(amount); canonicalChild?.inc(amount) }
+    override fun dec(amount: Double) { otelChild?.dec(amount); canonicalChild?.dec(amount) }
   }
 }
 
-private class DualWritePeakGauge(
-  private val otel: PalPeakGauge,
-  private val prom: PalPeakGauge,
+private class BridgePeakGauge(
+  private val otel: PalPeakGauge?,
+  private val canonical: PalPeakGauge?,
+  private val mapping: CanonicalMetricMapping?,
+  private val labelNames: List<String>,
 ) : PalPeakGauge {
   override fun labels(vararg labelValues: String) = object : PalPeakGauge.Child {
-    private val otelChild = otel.labels(*labelValues)
-    private val promChild = prom.labels(*labelValues)
-    override fun record(newValue: Double) { otelChild.record(newValue); promChild.record(newValue) }
+    private val otelChild = otel?.labels(*labelValues)
+    private val canonicalChild = canonical?.labels(*mapping.remapValues(labelNames, labelValues))
+    override fun record(newValue: Double) { otelChild?.record(newValue); canonicalChild?.record(newValue) }
   }
 }
 
-private class DualWriteProvidedGauge(
-  private val otel: PalProvidedGauge,
-  private val prom: PalProvidedGauge,
+private class BridgeProvidedGauge(
+  private val otel: PalProvidedGauge?,
+  private val canonical: PalProvidedGauge?,
+  private val mapping: CanonicalMetricMapping?,
+  private val labelNames: List<String>,
 ) : PalProvidedGauge {
   override fun labels(vararg labelValues: String) = object : PalProvidedGauge.Child {
-    private val otelChild = otel.labels(*labelValues)
-    private val promChild = prom.labels(*labelValues)
+    private val otelChild = otel?.labels(*labelValues)
+    private val canonicalChild = canonical?.labels(*mapping.remapValues(labelNames, labelValues))
     override fun <T : Any> registerProvider(reference: T, provider: T.() -> Number) {
-      otelChild.registerProvider(reference, provider)
-      promChild.registerProvider(reference, provider)
+      otelChild?.registerProvider(reference, provider)
+      canonicalChild?.registerProvider(reference, provider)
     }
   }
 }
 
-private class DualWriteHistogram(
-  private val otel: PalHistogram,
-  private val prom: PalHistogram,
+private class BridgeHistogram(
+  private val otel: PalHistogram?,
+  private val canonical: PalHistogram?,
+  private val mapping: CanonicalMetricMapping?,
+  private val labelNames: List<String>,
 ) : PalHistogram {
   override fun labels(vararg labelValues: String) = object : PalHistogram.Child {
-    private val otelChild = otel.labels(*labelValues)
-    private val promChild = prom.labels(*labelValues)
-    override fun observe(value: Double) { otelChild.observe(value); promChild.observe(value) }
+    private val otelChild = otel?.labels(*labelValues)
+    private val canonicalChild = canonical?.labels(*mapping.remapValues(labelNames, labelValues))
+    override fun observe(value: Double) { otelChild?.observe(value); canonicalChild?.observe(value) }
   }
 }
+
+private fun CanonicalMetricMapping?.remapValues(
+  labelNames: List<String>,
+  labelValues: Array<out String>,
+): Array<out String> = labelValues // Values are positional, names are remapped at creation time
