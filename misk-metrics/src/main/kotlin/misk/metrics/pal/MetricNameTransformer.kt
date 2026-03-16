@@ -1,4 +1,4 @@
-package misk.metrics.v3
+package misk.metrics.pal
 
 /**
  * Transforms metric names for pipeline-specific conventions (e.g., adding an app prefix like

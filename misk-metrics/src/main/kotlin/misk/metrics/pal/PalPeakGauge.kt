@@ -1,10 +1,10 @@
-package misk.metrics.v3
+package misk.metrics.pal
 
 /**
  * A gauge that tracks the peak (maximum) value observed since the last collection, then resets to
  * zero after each collection.
  */
-interface MiskPeakGauge {
+interface PalPeakGauge {
   fun labels(vararg labelValues: String): Child
 
   interface Child {

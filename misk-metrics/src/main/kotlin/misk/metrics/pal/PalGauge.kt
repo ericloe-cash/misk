@@ -1,9 +1,7 @@
-package misk.metrics.v3
+package misk.metrics.pal
 
-/**
- * A gauge metric that can go up and down.
- */
-interface MiskGauge {
+/** A gauge metric that can go up and down. */
+interface PalGauge {
   fun labels(vararg labelValues: String): Child
 
   interface Child {

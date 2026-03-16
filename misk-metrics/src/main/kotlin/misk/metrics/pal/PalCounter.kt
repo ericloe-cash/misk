@@ -1,9 +1,7 @@
-package misk.metrics.v3
+package misk.metrics.pal
 
-/**
- * A monotonically increasing counter metric.
- */
-interface MiskCounter {
+/** A monotonically increasing counter metric. */
+interface PalCounter {
   fun labels(vararg labelValues: String): Child
 
   interface Child {

@@ -1,4 +1,4 @@
-package misk.metrics.v3
+package misk.metrics.pal
 
 /**
  * Default set of buckets which assumes the value is in milliseconds (ms).

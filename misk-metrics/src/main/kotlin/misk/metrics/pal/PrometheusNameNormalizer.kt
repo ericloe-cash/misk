@@ -1,4 +1,4 @@
-package misk.metrics.v3
+package misk.metrics.pal
 
 /**
  * Canonical place for Prometheus-specific metric name normalization rules. Applied to metric names
