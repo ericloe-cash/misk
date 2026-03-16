@@ -1,3 +1,5 @@
+@file:OptIn(misk.annotation.ExperimentalMiskApi::class)
+
 package misk.metrics.otel
 
 import io.opentelemetry.sdk.OpenTelemetrySdk

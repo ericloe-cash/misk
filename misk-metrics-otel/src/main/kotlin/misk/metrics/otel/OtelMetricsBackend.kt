@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.metrics.otel
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.common.util.concurrent.AtomicDouble
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
@@ -17,6 +20,7 @@ import java.lang.ref.WeakReference
 /**
  * [MetricsBackend] backed by OpenTelemetry SDK instruments.
  */
+@ExperimentalMiskApi
 class OtelMetricsBackend(private val meter: Meter) : MetricsBackend {
 
   override fun createCounter(name: String, help: String, labelNames: List<String>): PalCounter {

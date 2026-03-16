@@ -1,8 +1,11 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.metrics.otel
 
 import com.google.inject.Provides
 import io.opentelemetry.api.metrics.Meter
 import jakarta.inject.Singleton
+import misk.annotation.ExperimentalMiskApi
 import misk.inject.KAbstractModule
 import misk.metrics.pal.PalMetrics
 
@@ -12,6 +15,7 @@ import misk.metrics.pal.PalMetrics
  *
  * The caller must provide a binding for [Meter].
  */
+@ExperimentalMiskApi
 class OtelMetricsModule : KAbstractModule() {
   override fun configure() {
     requireBinding<Meter>()

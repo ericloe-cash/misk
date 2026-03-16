@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.metrics.otel
 
+import misk.annotation.ExperimentalMiskApi
 import misk.metrics.pal.MetricNameTransformer
 import misk.metrics.pal.PalCounter
 import misk.metrics.pal.PalGauge
@@ -17,6 +20,7 @@ import misk.metrics.pal.backend.MetricsBackend
  * Standard metric name mappings (misk-owned metrics like `histo_http_request_latency_ms`) are
  * handled by the caller via [MiskStandardMetricMappings] which produces the legacy name.
  */
+@ExperimentalMiskApi
 class BridgeMetricsBackend(
   private val otel: MetricsBackend,
   private val prometheus: MetricsBackend,
