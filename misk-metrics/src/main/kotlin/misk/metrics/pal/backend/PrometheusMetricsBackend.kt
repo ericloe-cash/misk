@@ -1,5 +1,6 @@
 package misk.metrics.pal.backend
 
+import misk.annotation.ExperimentalMiskApi
 import misk.metrics.v2.Metrics
 import misk.metrics.v2.PeakGauge
 import misk.metrics.v2.ProvidedGauge
@@ -13,6 +14,7 @@ import misk.metrics.pal.PalProvidedGauge
  * [MetricsBackend] that delegates to [misk.metrics.v2.Metrics] for Prometheus-based metric
  * creation.
  */
+@ExperimentalMiskApi
 class PrometheusMetricsBackend(private val v2: Metrics) : MetricsBackend {
 
   override fun createCounter(name: String, help: String, labelNames: List<String>): PalCounter {

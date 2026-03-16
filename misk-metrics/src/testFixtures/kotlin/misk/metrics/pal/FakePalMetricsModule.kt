@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.metrics.pal
 
+import misk.annotation.ExperimentalMiskApi
 import misk.inject.KAbstractModule
 
 /**

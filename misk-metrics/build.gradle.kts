@@ -8,6 +8,7 @@ plugins {
 }
 
 dependencies {
+  api(project(":misk-api"))
   api(project(":misk-inject"))
   api(libs.prometheusClient)
   implementation(libs.findbugsJsr305)

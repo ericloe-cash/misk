@@ -1,5 +1,6 @@
 package misk.metrics.pal
 
+import misk.annotation.ExperimentalMiskApi
 import misk.metrics.pal.backend.MetricsBackend
 
 /**
@@ -11,6 +12,7 @@ import misk.metrics.pal.backend.MetricsBackend
  * - `BridgeMetricsModule` — OTel engine with legacy Prometheus dual-write
  * - `OtelMetricsModule` — OTel only
  */
+@ExperimentalMiskApi
 interface PalMetrics {
   fun counter(name: String, help: String, labelNames: List<String> = listOf()): PalCounter
 
@@ -36,6 +38,7 @@ interface PalMetrics {
   }
 }
 
+@OptIn(ExperimentalMiskApi::class)
 internal class DefaultPalMetrics(private val backend: MetricsBackend) : PalMetrics {
   override fun counter(name: String, help: String, labelNames: List<String>): PalCounter =
     backend.createCounter(name, help, labelNames)

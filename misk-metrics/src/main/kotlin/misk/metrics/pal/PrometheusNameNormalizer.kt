@@ -1,9 +1,12 @@
 package misk.metrics.pal
 
+import misk.annotation.ExperimentalMiskApi
+
 /**
  * Canonical place for Prometheus-specific metric name normalization rules. Applied to metric names
  * before they are registered with Prometheus.
  */
+@ExperimentalMiskApi
 object PrometheusNameNormalizer {
   fun normalize(name: String): String {
     var result = name

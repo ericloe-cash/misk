@@ -1,6 +1,9 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.metrics
 
 import com.google.inject.Provider
+import misk.annotation.ExperimentalMiskApi
 import io.prometheus.client.CollectorRegistry
 import jakarta.inject.Inject
 import misk.inject.KAbstractModule
