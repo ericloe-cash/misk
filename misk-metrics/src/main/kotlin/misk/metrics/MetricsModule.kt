@@ -5,12 +5,14 @@ import io.prometheus.client.CollectorRegistry
 import jakarta.inject.Inject
 import misk.inject.KAbstractModule
 import misk.inject.asSingleton
+import misk.metrics.v3.backend.PrometheusMetricsBackend
 
 class MetricsModule : KAbstractModule() {
   override fun configure() {
     bind<CollectorRegistry>().toProvider(CollectorRegistryProvider::class.java).asSingleton()
     bind<Metrics>().toProvider(MetricsProvider::class.java).asSingleton()
     bind<misk.metrics.v2.Metrics>().toProvider(V2MetricsProvider::class.java).asSingleton()
+    bind<misk.metrics.v3.Metrics>().toProvider(V3MetricsProvider::class.java).asSingleton()
   }
 
   /**
@@ -34,6 +36,13 @@ class MetricsModule : KAbstractModule() {
     Provider<misk.metrics.v2.Metrics> {
     override fun get(): misk.metrics.v2.Metrics {
       return misk.metrics.v2.Metrics.factory(registry)
+    }
+  }
+
+  internal class V3MetricsProvider @Inject constructor(private val registry: CollectorRegistry) :
+    Provider<misk.metrics.v3.Metrics> {
+    override fun get(): misk.metrics.v3.Metrics {
+      return misk.metrics.v3.Metrics.factory(PrometheusMetricsBackend(registry))
     }
   }
 }
