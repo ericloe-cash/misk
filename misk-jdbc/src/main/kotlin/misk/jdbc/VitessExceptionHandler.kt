@@ -7,6 +7,8 @@ import java.sql.SQLException
 import java.util.concurrent.ConcurrentHashMap
 import misk.logging.getLogger
 
+// TODO(pal-migration): This bypasses the PAL and uses CollectorRegistry/Counter directly.
+//  Migrate to PalMetrics once the PAL supports injection into non-Guice-managed classes.
 internal class VitessExceptionHandler(registry: CollectorRegistry? = null) : SQLExceptionOverride {
   private val logger = getLogger<VitessExceptionHandler>()
 

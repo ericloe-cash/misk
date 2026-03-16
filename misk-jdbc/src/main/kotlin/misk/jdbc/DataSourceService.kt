@@ -31,6 +31,8 @@ constructor(
   private val deployment: Deployment,
   private val dataSourceDecorators: Set<DataSourceDecorator>,
   private val databasePool: DatabasePool,
+  // TODO(pal-migration): CollectorRegistry is injected directly for HikariCP's
+  //  PrometheusMetricsTrackerFactory. Needs a PAL-compatible alternative.
   private val collectorRegistry: CollectorRegistry? = null,
 ) : AbstractIdleService(), DataSourceConnector, Provider<DataSource> {
   private lateinit var config: DataSourceConfig
