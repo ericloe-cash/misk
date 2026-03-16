@@ -1,3 +1,6 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
+import misk.annotation.ExperimentalMiskApi
 import misk.metrics.pal.FakePalMetrics
 import misk.web.WebConfig
 import misk.web.jetty.MeasuredWindowRateControl

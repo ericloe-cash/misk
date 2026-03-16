@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 //
 // ========================================================================
 // Copyright (c) 1995 Mort Bay Consulting Pty Ltd and others.
@@ -12,6 +14,7 @@
 //
 package misk.web.jetty
 
+import misk.annotation.ExperimentalMiskApi
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.time.Duration

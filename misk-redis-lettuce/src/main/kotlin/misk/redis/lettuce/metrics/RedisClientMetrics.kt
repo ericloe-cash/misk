@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.redis.lettuce.metrics
 
+import misk.annotation.ExperimentalMiskApi
 import io.lettuce.core.support.BoundedAsyncPool
 import jakarta.inject.Inject
 import jakarta.inject.Singleton

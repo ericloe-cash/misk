@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.perf
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.common.base.Ticker
 import com.google.common.util.concurrent.AbstractExecutionThreadService
 import jakarta.inject.Inject

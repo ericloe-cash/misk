@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.client
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.common.base.Stopwatch
 import com.google.common.base.Ticker
 import com.squareup.wire.GrpcMethod

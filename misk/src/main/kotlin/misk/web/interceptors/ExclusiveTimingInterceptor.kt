@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.web.interceptors
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.common.base.Stopwatch
 import com.google.inject.TypeLiteral
 import jakarta.inject.Inject

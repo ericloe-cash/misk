@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.policy.opa
 
+import misk.annotation.ExperimentalMiskApi
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.lang.IllegalArgumentException

@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.web.interceptors
 
+import misk.annotation.ExperimentalMiskApi
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import misk.Action

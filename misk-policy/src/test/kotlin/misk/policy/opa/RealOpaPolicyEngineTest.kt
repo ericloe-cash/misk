@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.policy.opa
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.inject.Injector
 import com.google.inject.Module
 import com.google.inject.Provides
