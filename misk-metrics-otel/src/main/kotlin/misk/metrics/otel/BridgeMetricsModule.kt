@@ -7,7 +7,7 @@ import io.opentelemetry.api.metrics.Meter
 import jakarta.inject.Singleton
 import misk.annotation.ExperimentalMiskApi
 import misk.inject.KAbstractModule
-import misk.metrics.MetricsModule
+import misk.metrics.PrometheusLegacyMetricsModule
 import misk.metrics.pal.PalMetrics
 
 /**
@@ -29,7 +29,7 @@ import misk.metrics.pal.PalMetrics
  * - Install [MiskStandardMetricMappingsModule] for canonical OTel names
  * - Multibind additional [CanonicalMetricMapping]s for custom canonical mappings
  *
- * This module also installs [MetricsModule] so `v2.Metrics`, `v1.Metrics`, and
+ * This module also installs [PrometheusLegacyMetricsModule] so `v2.Metrics`, `v1.Metrics`, and
  * `CollectorRegistry` remain available for app code.
  *
  * **Open question**: Can OTel metrics with mapped names be equivalent enough to Prometheus metrics
@@ -42,7 +42,7 @@ class BridgeMetricsModule(
 ) : KAbstractModule() {
   override fun configure() {
     requireBinding<Meter>()
-    install(MetricsModule())
+    install(PrometheusLegacyMetricsModule())
     // Ensure the multibinding exists even if no canonical mappings are installed.
     newMultibinder<CanonicalMetricMapping>()
   }
