@@ -1,8 +1,4 @@
-import jakarta.inject.Inject
-import misk.metrics.v2.FakeMetrics
-import misk.metrics.v2.FakeMetricsModule
-import misk.testing.MiskTest
-import misk.testing.MiskTestModule
+import misk.metrics.pal.FakePalMetrics
 import misk.web.WebConfig
 import misk.web.jetty.MeasuredWindowRateControl
 import org.assertj.core.api.Assertions.assertThat
@@ -10,11 +6,9 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
 
-@MiskTest(startService = false)
 class MeasuredWindowRateControlTest {
 
-  @MiskTestModule val module = FakeMetricsModule()
-  @Inject lateinit var metrics: FakeMetrics
+  private val metrics = FakePalMetrics()
 
   fun maxEventRate(n: Int): WebConfig {
     val webConfig = mock(WebConfig::class.java)

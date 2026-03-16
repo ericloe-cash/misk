@@ -1,11 +1,13 @@
 package misk.web.interceptors
 
-import io.prometheus.client.Histogram
+import io.prometheus.client.CollectorRegistry
 import jakarta.inject.Inject
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 import misk.MiskTestingServiceModule
 import misk.inject.KAbstractModule
+import misk.metrics.summaryCount
+import misk.metrics.summarySum
 import misk.security.authz.AccessControlModule
 import misk.security.authz.FakeCallerAuthenticator
 import misk.security.authz.FakeCallerAuthenticator.Companion.SERVICE_HEADER
@@ -35,9 +37,13 @@ class ExclusiveTimingInterceptorTest {
   @Inject private lateinit var exclusiveTimingInterceptorFactory: ExclusiveTimingInterceptor.Factory
   @Inject private lateinit var metricsInterceptorFactory: MetricsInterceptor.Factory
   @Inject private lateinit var jettyService: JettyService
+  @Inject private lateinit var registry: CollectorRegistry
 
-  private fun labels(code: Int, service: String = "unknown") =
-    arrayOf("ExclusiveTimingInterceptorTestAction", service, code.toString())
+  private fun exclusiveLabels(code: Int, service: String = "unknown") =
+    arrayOf("action" to "ExclusiveTimingInterceptorTestAction", "caller" to service, "status_code" to code.toString())
+
+  private fun metricsLabels(code: Int, service: String = "unknown") =
+    arrayOf("action" to "ExclusiveTimingInterceptorTestAction", "caller" to service, "code" to code.toString())
 
   @Test
   fun time() {
@@ -48,10 +54,9 @@ class ExclusiveTimingInterceptorTest {
     // Wait for metrics to be recorded asynchronously
     await().atMost(1, TimeUnit.SECONDS).untilAsserted {
       // Figure out how long each of the latency metrics was
-      val requestDuration = metricsInterceptorFactory.requestDurationSummary!!
-      val exclusiveRequestDuration = exclusiveTimingInterceptorFactory.requestDurationHistogram
-      val difference =
-        requestDuration.labels(*labels(200)).get().sum - exclusiveRequestDuration.labels(*labels(200)).get().sum
+      val requestDurationSum = registry.summarySum("histo_http_request_latency_ms", *metricsLabels(200))!!
+      val exclusiveDurationSum = registry.summarySum("histo_http_request_exclusive_latency_ms", *exclusiveLabels(200))!!
+      val difference = requestDurationSum - exclusiveDurationSum
 
       // Verify that the sleep time was excluded
       // (but leave some room for small differences due to execution time.)
@@ -78,18 +83,17 @@ class ExclusiveTimingInterceptorTest {
     invoke(200, "my-peer")
     invoke(200, user = "some-user")
 
-    val metric = exclusiveTimingInterceptorFactory.requestDurationHistogram
+    val metricName = "histo_http_request_exclusive_latency_ms"
 
     // Wait for metrics to be recorded asynchronously
     await().atMost(1, TimeUnit.SECONDS).untilAsserted {
       // Make sure all the right metrics were generated
-      // Note: buckets.last() always contains the count of samples
-      assertThat(metric.labels(*labels(200)).get().count()).isEqualTo(2)
-      assertThat(metric.labels(*labels(202)).get().count()).isEqualTo(1)
-      assertThat(metric.labels(*labels(404)).get().count()).isEqualTo(1)
-      assertThat(metric.labels(*labels(403)).get().count()).isEqualTo(2)
-      assertThat(metric.labels(*labels(200, "my-peer")).get().count()).isEqualTo(4)
-      assertThat(metric.labels(*labels(200, "<user>")).get().count()).isEqualTo(1)
+      assertThat(registry.summaryCount(metricName, *exclusiveLabels(200))?.toInt()).isEqualTo(2)
+      assertThat(registry.summaryCount(metricName, *exclusiveLabels(202))?.toInt()).isEqualTo(1)
+      assertThat(registry.summaryCount(metricName, *exclusiveLabels(404))?.toInt()).isEqualTo(1)
+      assertThat(registry.summaryCount(metricName, *exclusiveLabels(403))?.toInt()).isEqualTo(2)
+      assertThat(registry.summaryCount(metricName, *exclusiveLabels(200, "my-peer"))?.toInt()).isEqualTo(4)
+      assertThat(registry.summaryCount(metricName, *exclusiveLabels(200, "<user>"))?.toInt()).isEqualTo(1)
     }
   }
 
@@ -104,8 +108,6 @@ class ExclusiveTimingInterceptorTest {
       assertThat(it.code).isEqualTo(desiredStatusCode)
     }
   }
-
-  private fun Histogram.Child.Value.count() = buckets.last().toInt()
 
   class TestModule : KAbstractModule() {
     override fun configure() {

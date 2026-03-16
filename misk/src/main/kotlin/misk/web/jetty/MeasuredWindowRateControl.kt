@@ -12,14 +12,14 @@
 //
 package misk.web.jetty
 
-import io.prometheus.client.Counter
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.time.Duration
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
-import misk.metrics.v2.Metrics
-import misk.metrics.v2.PeakGauge
+import misk.metrics.pal.PalCounter
+import misk.metrics.pal.PalMetrics
+import misk.metrics.pal.PalPeakGauge
 import misk.web.WebConfig
 import org.eclipse.jetty.http2.parser.RateControl
 import org.eclipse.jetty.io.EndPoint
@@ -32,8 +32,8 @@ import org.eclipse.jetty.util.NanoTime
 class MeasuredWindowRateControl
 private constructor(
   private val maxEvents: Int,
-  private val rateEventsPeakGauge: PeakGauge,
-  private val rateLimitedEventCounter: Counter,
+  private val rateEventsPeakGauge: PalPeakGauge,
+  private val rateLimitedEventCounter: PalCounter,
 ) : RateControl {
 
   private val events = ConcurrentLinkedQueue<Long>()
@@ -52,17 +52,17 @@ private constructor(
     events.add(now + window)
 
     val count = size.incrementAndGet()
-    rateEventsPeakGauge.record(count.toDouble())
+    rateEventsPeakGauge.labels().record(count.toDouble())
     if (maxEvents == -1) return true
 
     val allowed = count <= maxEvents
-    if (!allowed) rateLimitedEventCounter.inc()
+    if (!allowed) rateLimitedEventCounter.labels().inc()
     return allowed
   }
 
   /** Ensure the factory remains a singleton to prevent multiple instantiations of the same metric objects */
   @Singleton
-  class Factory @Inject constructor(metrics: Metrics, private val webConfig: WebConfig) : RateControl.Factory {
+  class Factory @Inject constructor(metrics: PalMetrics, private val webConfig: WebConfig) : RateControl.Factory {
 
     private val rateEventsPeakGauge =
       metrics.peakGauge("jetty_http2_rate_control_events_peak", "Peak gauge of observed events per second")

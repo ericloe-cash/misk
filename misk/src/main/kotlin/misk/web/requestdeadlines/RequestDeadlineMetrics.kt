@@ -1,25 +1,25 @@
 package misk.web.requestdeadlines
 
-import io.prometheus.client.Counter
-import io.prometheus.client.Histogram
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.time.Duration
 import misk.Action
 import misk.client.ClientAction
-import misk.metrics.v2.Metrics
+import misk.metrics.pal.PalCounter
+import misk.metrics.pal.PalHistogram
+import misk.metrics.pal.PalMetrics
 import misk.web.DispatchMechanism
 
 @Singleton
-internal class RequestDeadlineMetrics @Inject internal constructor(metrics: Metrics) {
-  val deadlineExceededTimeHistogram: Histogram =
+internal class RequestDeadlineMetrics @Inject internal constructor(metrics: PalMetrics) {
+  val deadlineExceededTimeHistogram: PalHistogram =
     metrics.histogram(
       name = "deadline_exceeded_time_ms",
       help = "how much time has passed since the deadline when exceeded",
       labelNames = listOf("action", "direction", "enforced", "protocol"),
     )
 
-  val deadlineDistributionHistogram: Histogram =
+  val deadlineDistributionHistogram: PalHistogram =
     metrics.histogram(
       name = "deadline_duration_ms",
       help = "Distribution of deadline durations and count of propagated deadlines",
@@ -45,7 +45,7 @@ internal class RequestDeadlineMetrics @Inject internal constructor(metrics: Metr
         ),
     )
 
-  val noDeadlineInScopeCounter: Counter =
+  val noDeadlineInScopeCounter: PalCounter =
     metrics.counter(
       name = "deadline_not_in_scope_total",
       help = "Count of outbound requests that do not have a deadline in ActionScope",

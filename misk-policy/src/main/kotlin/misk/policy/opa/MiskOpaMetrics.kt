@@ -1,15 +1,15 @@
 package misk.policy.opa
 
-import io.prometheus.client.Counter
-import io.prometheus.client.Histogram
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.lang.IllegalArgumentException
-import misk.metrics.v2.Metrics
+import misk.metrics.pal.PalCounter
+import misk.metrics.pal.PalHistogram
+import misk.metrics.pal.PalMetrics
 
 /** Maps [OpaResponse.metrics] into prometheus counters and histograms. */
 @Singleton
-class MiskOpaMetrics @Inject constructor(metrics: Metrics) : OpaMetrics {
+class MiskOpaMetrics @Inject constructor(metrics: PalMetrics) : OpaMetrics {
 
   @Suppress("ktlint:enum-entry-name-case")
   @Deprecated("Use OpaMetrics.Names instead", ReplaceWith("OpaMetrics.Names", "misk.policy.opa.OpaMetrics"))
@@ -22,42 +22,42 @@ class MiskOpaMetrics @Inject constructor(metrics: Metrics) : OpaMetrics {
     opa_rego_evaluated,
   }
 
-  private val serverQueryCacheHit: Counter =
+  private val serverQueryCacheHit: PalCounter =
     metrics.counter(
       OpaMetrics.Names.opa_server_query_cache_hit.name,
       "Number of cache hits for a successful query.",
       listOf("document"),
     )
 
-  private val regoExternalResolve: Histogram =
+  private val regoExternalResolve: PalHistogram =
     metrics.histogram(
       OpaMetrics.Names.opa_rego_external_resolve.name,
       "Time taken to resolve external data on a successful query.",
       listOf("document"),
     )
 
-  private val regoInputParse: Histogram =
+  private val regoInputParse: PalHistogram =
     metrics.histogram(
       OpaMetrics.Names.opa_rego_input_parse.name,
       "Time taken to parse the input for a successful query.",
       listOf("document"),
     )
 
-  private val regoQueryEval: Histogram =
+  private val regoQueryEval: PalHistogram =
     metrics.histogram(
       OpaMetrics.Names.opa_rego_query_eval.name,
       "Time taken to evaluate a successful query.",
       listOf("document"),
     )
 
-  private val serverHandler: Histogram =
+  private val serverHandler: PalHistogram =
     metrics.histogram(
       OpaMetrics.Names.opa_server_handler.name,
       "Time take to handle a successful API request.",
       listOf("document"),
     )
 
-  private val opaRegoEvaluated: Counter =
+  private val opaRegoEvaluated: PalCounter =
     metrics.counter(
       OpaMetrics.Names.opa_rego_evaluated.name,
       "Count of evaluations on a policy, whether it was successful or not.",

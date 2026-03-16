@@ -1,13 +1,11 @@
 package misk.web.interceptors
 
-import io.prometheus.client.Histogram
-import io.prometheus.client.Summary
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import misk.Action
 import misk.MiskCaller
-import misk.metrics.backends.prometheus.PrometheusConfig
-import misk.metrics.v2.Metrics
+import misk.metrics.pal.PalHistogram
+import misk.metrics.pal.PalMetrics
 import misk.scope.ActionScoped
 import misk.time.timed
 import misk.web.NetworkChain
@@ -16,8 +14,7 @@ import misk.web.NetworkInterceptor
 internal class MetricsInterceptor
 internal constructor(
   private val actionName: String,
-  private val requestDurationSummary: Summary?,
-  private val requestDurationHistogram: Histogram,
+  private val requestDurationHistogram: PalHistogram,
   private val caller: ActionScoped<MiskCaller?>,
 ) : NetworkInterceptor {
   override fun intercept(chain: NetworkChain) {
@@ -32,7 +29,6 @@ internal constructor(
       }
 
     val statusCode = chain.httpCall.statusCode
-    requestDurationSummary?.labels(actionName, callingPrincipal, statusCode.toString())?.observe(elapsedTimeMillis)
     requestDurationHistogram.labels(actionName, callingPrincipal, statusCode.toString()).observe(elapsedTimeMillis)
     return result
   }
@@ -41,22 +37,9 @@ internal constructor(
   class Factory
   @Inject
   constructor(
-    m: Metrics,
+    m: PalMetrics,
     private val caller: @JvmSuppressWildcards ActionScoped<MiskCaller?>,
-    config: PrometheusConfig,
   ) : NetworkInterceptor.Factory {
-    internal val requestDurationSummary =
-      when (config.disable_default_summary_metrics) {
-        true -> null
-        false ->
-          m.summary(
-            name = "http_request_latency_ms",
-            help = "count and duration in ms of incoming web requests",
-            labelNames = listOf("action", "caller", "code"),
-            maxAgeSeconds = config.max_age_in_seconds,
-          )
-      }
-
     internal val requestDurationHistogram =
       m.histogram(
         name = "histo_http_request_latency_ms",
@@ -65,6 +48,6 @@ internal constructor(
       )
 
     override fun create(action: Action) =
-      MetricsInterceptor(action.name, requestDurationSummary, requestDurationHistogram, caller)
+      MetricsInterceptor(action.name, requestDurationHistogram, caller)
   }
 }

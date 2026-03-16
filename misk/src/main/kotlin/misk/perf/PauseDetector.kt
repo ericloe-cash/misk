@@ -2,7 +2,6 @@ package misk.perf
 
 import com.google.common.base.Ticker
 import com.google.common.util.concurrent.AbstractExecutionThreadService
-import io.prometheus.client.Histogram
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.time.Duration
@@ -10,8 +9,9 @@ import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.TimeUnit.NANOSECONDS
 import misk.concurrent.Sleeper
 import misk.logging.getLogger
-import misk.metrics.v2.Metrics
-import misk.metrics.v2.PeakGauge
+import misk.metrics.pal.PalHistogram
+import misk.metrics.pal.PalMetrics
+import misk.metrics.pal.PalPeakGauge
 import org.slf4j.event.Level
 
 /**
@@ -28,7 +28,7 @@ constructor(
   private val config: PauseDetectorConfig,
   @ForPauseDetector private val ticker: Ticker,
   @ForPauseDetector private val sleeper: Sleeper,
-  val metrics: Metrics,
+  val metrics: PalMetrics,
 ) : AbstractExecutionThreadService() {
 
   /** Log levels by pause time sorted by severity descending */
@@ -45,11 +45,11 @@ constructor(
    * (We prefer histogram to summary here because the latter has higher CPU overhead, this runs ideally at close to 1k
    * QPS, and we don't strictly require accurate quantiles.)
    */
-  private val pauseHistogram: Histogram =
+  private val pauseHistogram: PalHistogram =
     metrics.histogram("jvm_pause_time_histogram_ms", "Histogram of observed pause time durations in millis", listOf())
 
   /** Tracks peak pause time. */
-  private val pausePeak: PeakGauge =
+  private val pausePeak: PalPeakGauge =
     metrics.peakGauge("jvm_pause_time_peak_ms", "Peak gauge of observed pause time duration in millis", listOf())
 
   // No synchronization is necessary for these variables: they are only ever accessed by the
@@ -109,8 +109,8 @@ constructor(
     val pauseMillis = NANOSECONDS.toMillis(pauseTimeNsec)
     if (pauseMillis >= config.metricsUpdateFloor) {
       val pauseMillisDouble = pauseMillis.toDouble()
-      pauseHistogram.observe(pauseMillisDouble)
-      pausePeak.record(pauseMillisDouble)
+      pauseHistogram.labels().observe(pauseMillisDouble)
+      pausePeak.labels().record(pauseMillisDouble)
     }
 
     val level = getLoggingLevel(pauseMillis)

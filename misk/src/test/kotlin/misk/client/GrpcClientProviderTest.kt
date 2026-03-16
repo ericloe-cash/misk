@@ -13,6 +13,7 @@ import com.squareup.wire.GrpcClient
 import com.squareup.wire.GrpcMethod
 import com.squareup.wire.Service
 import com.squareup.wire.WireRpc
+import io.prometheus.client.CollectorRegistry
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.time.Duration
@@ -21,6 +22,7 @@ import kotlin.test.assertFailsWith
 import misk.MiskTestingServiceModule
 import misk.inject.KAbstractModule
 import misk.inject.getInstance
+import misk.metrics.getSample
 import misk.security.ssl.SslLoader
 import misk.security.ssl.TrustStoreConfig
 import misk.testing.MiskTest
@@ -42,6 +44,7 @@ internal class GrpcClientProviderTest {
 
   @Inject private lateinit var jetty: JettyService
   private lateinit var clientMetricsInterceptorFactory: ClientMetricsInterceptor.Factory
+  private lateinit var collectorRegistry: CollectorRegistry
   private lateinit var robotLocator: RobotLocator
   val log = LinkedBlockingDeque<String>()
 
@@ -49,6 +52,7 @@ internal class GrpcClientProviderTest {
   fun beforeEach() {
     val clientInjector = Guice.createInjector(ClientModule(jetty))
     clientMetricsInterceptorFactory = clientInjector.getInstance()
+    collectorRegistry = clientInjector.getInstance()
     robotLocator = clientInjector.getInstance()
   }
 
@@ -85,16 +89,11 @@ internal class GrpcClientProviderTest {
         "<< ApplicationInterceptor robots.Locate /RobotLocator/Locate 200",
       )
     assertThat(
-        clientMetricsInterceptorFactory.requestDurationSummary!!.labels("robots.SayHello", "200").get().count.toInt()
-      )
-      .isEqualTo(1)
-    assertThat(
-        clientMetricsInterceptorFactory.requestDurationHistogram
-          .labels("robots.SayHello", "200")
-          .get()
-          .buckets
-          .last()
-          .toInt()
+        collectorRegistry.getSample(
+          "histo_client_http_request_latency_ms",
+          arrayOf("action" to "robots.SayHello", "code" to "200"),
+          sampleName = "histo_client_http_request_latency_ms_count",
+        )?.value?.toInt()
       )
       .isEqualTo(1)
   }
