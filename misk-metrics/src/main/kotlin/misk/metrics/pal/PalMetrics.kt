@@ -2,15 +2,39 @@ package misk.metrics.pal
 
 import misk.annotation.ExperimentalMiskApi
 import misk.metrics.pal.backend.MetricsBackend
+import misk.metrics.v2.defaultBuckets
 
 /**
- * Platform abstraction layer for metrics. Decouples misk's internal metric instrumentation from
- * any specific backend (Prometheus, OTel, or both).
+ * Platform Abstraction Layer (PAL) for metrics.
  *
- * The backing implementation is determined by which module is installed:
- * - `MetricsModule` / `PrometheusMetricsServiceModule` — Prometheus-only (today's default)
- * - `BridgeMetricsModule` — OTel engine with legacy Prometheus dual-write
- * - `OtelMetricsModule` — OTel only
+ * This is the internal metrics interface used by misk's own instrumentation (interceptors, jetty,
+ * etc.). It decouples misk from any specific metrics backend, enabling a migration path from
+ * Prometheus to OpenTelemetry without changing misk's metric call sites.
+ *
+ * ## How it fits into the OTel migration
+ *
+ * Misk is migrating from Prometheus-native metrics to OpenTelemetry. The migration has three modes,
+ * each backed by a different [MetricsBackend]:
+ *
+ * 1. **Prometheus only** (`MetricsModule`) — Today's default. PalMetrics delegates to
+ *    [misk.metrics.v2.Metrics] via [PrometheusMetricsBackend][misk.metrics.pal.backend.PrometheusMetricsBackend].
+ *    No OTel involvement. No behavior change.
+ *
+ * 2. **Bridge** (`BridgeMetricsModule`) — Misk's internal metrics are written to OTel. Metrics with
+ *    canonical OTel names (registered via `CanonicalMetricMapping` multibindings) are additionally
+ *    written under their OTel semantic convention name. A caller-provided `MetricNameMapper` can
+ *    transform or drop non-canonical metric names. App code using `v2.Metrics` continues to write
+ *    to Prometheus unchanged.
+ *
+ * 3. **OTel only** (`OtelMetricsModule`) — All misk metrics go to OTel. Injecting `v2.Metrics`
+ *    fails at startup, forcing all consumers to use PalMetrics or the OTel SDK directly.
+ *
+ * ## Who should use this
+ *
+ * **Misk internal code** (interceptors, framework modules) should inject `PalMetrics`.
+ * **Application code** should continue using `misk.metrics.v2.Metrics` until they are ready to
+ * migrate to OTel directly. PalMetrics is not a public versioned API — it is misk's internal
+ * plumbing, marked with [@ExperimentalMiskApi].
  */
 @ExperimentalMiskApi
 interface PalMetrics {

@@ -2,8 +2,6 @@ package misk.metrics.pal.backend
 
 import misk.annotation.ExperimentalMiskApi
 import misk.metrics.v2.Metrics
-import misk.metrics.v2.PeakGauge
-import misk.metrics.v2.ProvidedGauge
 import misk.metrics.pal.PalCounter
 import misk.metrics.pal.PalGauge
 import misk.metrics.pal.PalHistogram
@@ -12,7 +10,13 @@ import misk.metrics.pal.PalProvidedGauge
 
 /**
  * [MetricsBackend] that delegates to [misk.metrics.v2.Metrics] for Prometheus-based metric
- * creation.
+ * creation. Each PAL type is a thin wrapper over the Prometheus client type returned by v2.
+ *
+ * This is the backend used in Prometheus-only mode (`MetricsModule`). It is also used by
+ * `BridgeMetricsModule` to keep `v2.Metrics` functional for app code that hasn't migrated to OTel.
+ *
+ * The wrapper does not add any behavior — it simply adapts the Prometheus API shape to the PAL
+ * interface so that callers don't depend on `io.prometheus.client.*` types directly.
  */
 @ExperimentalMiskApi
 class PrometheusMetricsBackend(private val v2: Metrics) : MetricsBackend {
