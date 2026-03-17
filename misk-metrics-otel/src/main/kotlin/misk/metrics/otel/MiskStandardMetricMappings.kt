@@ -6,15 +6,37 @@ import misk.annotation.ExperimentalMiskApi
 import misk.inject.KAbstractModule
 
 /**
- * Installs canonical OTel metric mappings for misk-owned standard metrics. Each mapping is
- * registered as a Guice multibinding of [CanonicalMetricMapping].
+ * Installs canonical OTel metric mappings for misk-owned standard metrics (e.g., HTTP request
+ * latency). Each mapping is registered as a Guice multibinding of [CanonicalMetricMapping].
  *
- * In bridge mode, these cause the bridge to additionally write the OTel canonical metric (with
- * remapped labels) alongside the original metric name. The caller cannot intercept or transform
- * canonical metrics.
+ * In bridge mode, these cause [BridgeMetricsBackend] to additionally write the OTel semantic
+ * convention metric (with remapped labels) alongside the original legacy metric name. The caller's
+ * [MetricNameMapper] cannot intercept or transform canonical metrics -- they are always written
+ * when a mapping exists.
  *
- * Install this module alongside [BridgeMetricsModule] to get canonical OTel names for misk's
- * standard HTTP metrics.
+ * ## How to add new mappings
+ *
+ * Mappings should live close to the code that defines each metric. For misk-owned metrics, add
+ * them here. For app-specific metrics, multibind [CanonicalMetricMapping] in your own module:
+ *
+ * ```kotlin
+ * multibind<CanonicalMetricMapping>().toInstance(
+ *   CanonicalMetricMapping(
+ *     legacyName = "my_app_request_count_total",
+ *     canonicalName = "my_app.request.count",
+ *     labelMapping = mapOf("env" to "deployment.environment"),
+ *   )
+ * )
+ * ```
+ *
+ * ## Usage
+ *
+ * Install this module alongside [BridgeMetricsModule]:
+ *
+ * ```kotlin
+ * install(BridgeMetricsModule(nameMapper = myMapper))
+ * install(MiskStandardMetricMappingsModule())
+ * ```
  */
 @ExperimentalMiskApi
 class MiskStandardMetricMappingsModule : KAbstractModule() {

@@ -6,12 +6,19 @@ import misk.annotation.ExperimentalMiskApi
 
 /**
  * Caller-provided mapper for transforming metric names in bridge mode. Applied to every metric
- * that does NOT have a canonical OTel mapping. The mapper can:
- * - Transform the name (e.g., add a prefix like `cash_`)
- * - Return null to signal the metric should be dropped from OTel
+ * that flows through [BridgeMetricsBackend], regardless of whether it has a canonical mapping.
+ * The mapper controls the "mapped" OTel instrument name; it does **not** affect canonical metrics
+ * (those are always written if a [CanonicalMetricMapping] exists).
  *
- * After the mapper runs, [misk.metrics.pal.PrometheusNameNormalizer] is applied (e.g., `_total`
- * stripping).
+ * The mapper can:
+ * - Transform the name (e.g., add a prefix like `cash_`)
+ * - Return `null` to drop the mapped OTel instrument (the canonical instrument, if any, is still
+ *   written)
+ *
+ * After the mapper runs, [misk.metrics.pal.PrometheusNameNormalizer] is applied to the result
+ * (e.g., `_total` suffix stripping so OTel counter naming conventions are followed).
+ *
+ * Pass an instance to [BridgeMetricsModule] to customize naming for your service's pipeline.
  */
 @ExperimentalMiskApi
 fun interface MetricNameMapper {

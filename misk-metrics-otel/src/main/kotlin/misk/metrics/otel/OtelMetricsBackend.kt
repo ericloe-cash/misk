@@ -18,7 +18,36 @@ import misk.metrics.pal.backend.MetricsBackend
 import java.lang.ref.WeakReference
 
 /**
- * [MetricsBackend] backed by OpenTelemetry SDK instruments.
+ * [MetricsBackend] that creates OpenTelemetry SDK instruments for each PAL metric type.
+ *
+ * This is the low-level OTel implementation used by both **Mode 2 (Bridge)** and **Mode 3
+ * (OTel-only)**. In bridge mode, [BridgeMetricsBackend] delegates to an instance of this class.
+ * In OTel-only mode, [OtelMetricsModule] wires this directly as the sole backend.
+ *
+ * ## PAL type to OTel instrument mapping
+ *
+ * | PAL type          | OTel instrument                         | Notes                              |
+ * |-------------------|-----------------------------------------|------------------------------------|
+ * | [PalCounter]      | [LongCounter]                           | `inc(Double)` truncates to `Long`  |
+ * | [PalGauge]        | `DoubleUpDownCounter`                   | See limitation below               |
+ * | [PalPeakGauge]    | Async gauge (`buildWithCallback`)       | Resets to 0 after each collection  |
+ * | [PalProvidedGauge]| Async gauge (`buildWithCallback`)       | Holds weak refs to providers       |
+ * | [PalHistogram]    | [DoubleHistogram]                       | Explicit bucket boundaries         |
+ *
+ * ## Known limitations
+ *
+ * - **Gauge `set()` approximation**: OTel has no synchronous gauge with `set()`. The gauge is
+ *   backed by a `DoubleUpDownCounter`, so `set(value)` actually calls `add(value)` instead of
+ *   replacing the current value. This means `set()` is incorrect in OTel-only mode. In bridge
+ *   mode this is acceptable because the Prometheus side handles `set()` correctly and the OTel
+ *   side is best-effort during migration.
+ *
+ * - **PeakGauge reset timing**: Peak values are reset to 0.0 after each OTel collection callback.
+ *   The reset window is determined by the SDK's export interval, not by the caller. If the export
+ *   interval differs from the previous Prometheus scrape interval, peak values may appear different.
+ *
+ * - **Counter precision**: `PalCounter.inc(Double)` is truncated to `Long` because OTel counters
+ *   are integer-valued. Fractional increments are silently lost.
  */
 @ExperimentalMiskApi
 class OtelMetricsBackend(private val meter: Meter) : MetricsBackend {
@@ -75,6 +104,7 @@ class OtelMetricsBackend(private val meter: Meter) : MetricsBackend {
   }
 }
 
+/** Converts parallel label name/value arrays into an OTel [Attributes] instance. */
 private fun buildAttributes(labelNames: List<String>, labelValues: Array<out String>): Attributes {
   val builder = Attributes.builder()
   labelNames.forEachIndexed { i, name ->
@@ -85,6 +115,7 @@ private fun buildAttributes(labelNames: List<String>, labelValues: Array<out Str
   return builder.build()
 }
 
+/** Wraps an OTel [LongCounter]. Each `labels()` call captures an [Attributes] snapshot. */
 private class OtelPalCounter(
   private val counter: LongCounter,
   private val labelNames: List<String>,
@@ -95,6 +126,10 @@ private class OtelPalCounter(
   }
 }
 
+/**
+ * Wraps an OTel `DoubleUpDownCounter` as a [PalGauge]. Note: `set()` is approximate -- see
+ * [OtelMetricsBackend] class doc for details on this known limitation.
+ */
 private class OtelPalGauge(
   private val gauge: io.opentelemetry.api.metrics.DoubleUpDownCounter,
   private val labelNames: List<String>,
@@ -113,6 +148,7 @@ private class OtelPalGauge(
   }
 }
 
+/** Wraps an OTel [DoubleHistogram]. Each `labels()` call captures an [Attributes] snapshot. */
 private class OtelPalHistogram(
   private val histogram: DoubleHistogram,
   private val labelNames: List<String>,

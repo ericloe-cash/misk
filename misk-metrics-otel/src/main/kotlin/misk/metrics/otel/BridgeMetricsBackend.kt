@@ -12,15 +12,38 @@ import misk.metrics.pal.PrometheusNameNormalizer
 import misk.metrics.pal.backend.MetricsBackend
 
 /**
- * Bridge [MetricsBackend] that writes all misk metrics to OTel. The pipeline for each metric:
+ * Bridge [MetricsBackend] that writes all misk metrics to OTel (Mode 2 of the Prometheus-to-OTel
+ * migration). This backend is the core of bridge mode: it takes each metric creation call and
+ * produces up to two OTel instruments -- the mapped metric and optionally a canonical metric.
  *
- * 1. The caller's [MetricNameMapper] runs — can transform the name or return null to drop it.
- * 2. [PrometheusNameNormalizer] runs on the mapper output (e.g., `_total` stripping).
- * 3. The metric is written to OTel with the resulting name (unless dropped).
- * 4. If the metric has a [CanonicalMetricMapping], the canonical OTel version is additionally
- *    written with remapped labels. The caller cannot intercept canonical metrics.
+ * ## Pipeline for each metric
  *
- * App metrics (using `v2.Metrics` directly) are unaffected — they still go to Prometheus.
+ * 1. The caller's [MetricNameMapper] runs on the original name. It can transform the name (e.g.,
+ *    add a `cash_` prefix) or return `null` to drop the metric from OTel entirely.
+ * 2. [PrometheusNameNormalizer] runs on the mapper output (e.g., strips `_total` suffix so OTel
+ *    counter naming conventions are followed).
+ * 3. The metric is written to OTel with the resulting name (unless dropped by step 1).
+ * 4. **Independently** of steps 1-3, if the original metric name matches a [CanonicalMetricMapping]
+ *    (registered via Guice multibinding), a second OTel instrument is created with the canonical
+ *    OTel name and remapped label names. The canonical instrument is always created when a mapping
+ *    exists -- the [MetricNameMapper] cannot drop or rename it.
+ *
+ * At runtime, every observation (e.g., `counter.labels("a").inc()`) fans out to both the mapped
+ * child and the canonical child (if they exist). Either or both may be null if the metric was
+ * dropped or has no canonical mapping.
+ *
+ * ## What is NOT affected
+ *
+ * App metrics created via `v2.Metrics` or `v1.Metrics` are not routed through this backend. Those
+ * APIs are backed by [misk.metrics.PrometheusLegacyMetricsModule] and continue writing directly to
+ * the Prometheus `CollectorRegistry`. Only metrics created through [PalMetrics] flow through here.
+ *
+ * ## Example
+ *
+ * Given a metric `histo_http_request_latency_ms` with a canonical mapping to
+ * `http.server.request.duration`, bridge mode produces:
+ * - An OTel histogram named according to the mapper + normalizer (e.g., `histo_http_request_latency_ms`)
+ * - A second OTel histogram named `http.server.request.duration` with OTel semantic convention labels
  */
 @ExperimentalMiskApi
 class BridgeMetricsBackend(
@@ -96,11 +119,17 @@ class BridgeMetricsBackend(
   }
 }
 
-/** Remap label names according to the canonical mapping. Unmapped labels pass through as-is. */
+/**
+ * Remaps label names according to the canonical mapping's [CanonicalMetricMapping.labelMapping].
+ * Labels not present in the mapping pass through with their original names.
+ */
 private fun CanonicalMetricMapping.remapLabelNames(labelNames: List<String>): List<String> =
   labelNames.map { labelMapping[it] ?: it }
 
-
+/**
+ * Fans out counter increments to the mapped OTel counter and the canonical OTel counter (if any).
+ * Either delegate may be null if the metric was dropped by the mapper or has no canonical mapping.
+ */
 private class BridgeCounter(
   private val otel: PalCounter?,
   private val canonical: PalCounter?,
@@ -117,6 +146,7 @@ private class BridgeCounter(
   }
 }
 
+/** Fans out gauge operations to the mapped and canonical OTel gauges. See [BridgeCounter]. */
 private class BridgeGauge(
   private val otel: PalGauge?,
   private val canonical: PalGauge?,
@@ -132,6 +162,7 @@ private class BridgeGauge(
   }
 }
 
+/** Fans out peak gauge recordings to the mapped and canonical OTel peak gauges. See [BridgeCounter]. */
 private class BridgePeakGauge(
   private val otel: PalPeakGauge?,
   private val canonical: PalPeakGauge?,
@@ -145,6 +176,7 @@ private class BridgePeakGauge(
   }
 }
 
+/** Fans out provider registrations to the mapped and canonical OTel provided gauges. See [BridgeCounter]. */
 private class BridgeProvidedGauge(
   private val otel: PalProvidedGauge?,
   private val canonical: PalProvidedGauge?,
@@ -161,6 +193,7 @@ private class BridgeProvidedGauge(
   }
 }
 
+/** Fans out histogram observations to the mapped and canonical OTel histograms. See [BridgeCounter]. */
 private class BridgeHistogram(
   private val otel: PalHistogram?,
   private val canonical: PalHistogram?,
@@ -174,7 +207,12 @@ private class BridgeHistogram(
   }
 }
 
+/**
+ * Returns label values for the canonical instrument. Values are returned as-is because label
+ * remapping is positional: the canonical instrument was created with remapped label *names* (via
+ * [remapLabelNames]), so the values at the same indices are already correct.
+ */
 private fun CanonicalMetricMapping?.remapValues(
   labelNames: List<String>,
   labelValues: Array<out String>,
-): Array<out String> = labelValues // Values are positional, names are remapped at creation time
+): Array<out String> = labelValues
