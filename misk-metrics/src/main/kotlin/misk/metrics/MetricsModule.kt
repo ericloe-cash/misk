@@ -1,12 +1,40 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.metrics
 
 import com.google.inject.Provider
+import misk.annotation.ExperimentalMiskApi
 import io.prometheus.client.CollectorRegistry
 import jakarta.inject.Inject
 import misk.inject.KAbstractModule
 import misk.inject.asSingleton
+import misk.metrics.pal.PalMetrics
+import misk.metrics.pal.backend.PrometheusMetricsBackend
 
+/**
+ * Prometheus-only metrics module (Mode 1). Binds CollectorRegistry, v1.Metrics, v2.Metrics, and
+ * PalMetrics all backed by Prometheus. This is the default for services that have not adopted OTel.
+ */
 class MetricsModule : KAbstractModule() {
+  override fun configure() {
+    install(PrometheusLegacyMetricsModule())
+    bind<PalMetrics>().toProvider(PalMetricsProvider::class.java).asSingleton()
+  }
+
+  internal class PalMetricsProvider @Inject constructor(private val v2Metrics: misk.metrics.v2.Metrics) :
+    Provider<PalMetrics> {
+    override fun get(): PalMetrics {
+      return PalMetrics.factory(PrometheusMetricsBackend(v2Metrics))
+    }
+  }
+}
+
+/**
+ * Binds the legacy Prometheus metrics stack: CollectorRegistry, v1.Metrics, and v2.Metrics.
+ * Used by both [MetricsModule] (Prometheus-only) and bridge mode modules that need v2.Metrics
+ * for app compatibility without binding PalMetrics.
+ */
+class PrometheusLegacyMetricsModule : KAbstractModule() {
   override fun configure() {
     bind<CollectorRegistry>().toProvider(CollectorRegistryProvider::class.java).asSingleton()
     bind<Metrics>().toProvider(MetricsProvider::class.java).asSingleton()
