@@ -11,6 +11,7 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import javax.servlet.http.HttpServletRequest
 import kotlin.test.assertFailsWith
+import misk.metrics.getSample
 import misk.Action
 import misk.MiskDefault
 import misk.MiskTestingServiceModule
@@ -38,7 +39,6 @@ import misk.web.ResponseContentType
 import misk.web.WebActionModule
 import misk.web.WebServerTestingModule
 import misk.web.actions.WebAction
-import misk.web.interceptors.MetricsInterceptor
 import misk.web.jetty.JettyService
 import misk.web.mediatype.MediaTypes
 import okhttp3.MediaType.Companion.toMediaType
@@ -59,7 +59,7 @@ class Http2ConnectivityTest {
 
   @Inject private lateinit var jetty: JettyService
   @Inject private lateinit var logCollector: LogCollector
-  @Inject private lateinit var metricsInterceptorFactory: MetricsInterceptor.Factory
+  @Inject private lateinit var registry: io.prometheus.client.CollectorRegistry
 
   private lateinit var client: OkHttpClient
 
@@ -126,15 +126,12 @@ class Http2ConnectivityTest {
     val code = module.lockInterceptorFactory.queue.take()
     assertThat(code).isEqualTo(500)
 
-    val requestDuration = metricsInterceptorFactory.requestDurationSummary!!
-    assertThat(
-        requestDuration
-          .labels("Http2ConnectivityTest.DisconnectWithLargeResponseAction", "unknown", "500")
-          .get()
-          .count
-          .toInt()
-      )
-      .isEqualTo(1)
+    val count = registry.getSample(
+      "histo_http_request_latency_ms",
+      arrayOf("action" to "Http2ConnectivityTest.DisconnectWithLargeResponseAction", "caller" to "unknown", "code" to "500"),
+      sampleName = "histo_http_request_latency_ms_count",
+    )?.value?.toInt()
+    assertThat(count).isEqualTo(1)
   }
 
   /** Confirm we don't page oncall and we record a 499 in the metrics. * */
@@ -167,15 +164,12 @@ class Http2ConnectivityTest {
     val code = module.lockInterceptorFactory.queue.take()
     assertThat(code).isEqualTo(499)
 
-    val requestDuration = metricsInterceptorFactory.requestDurationSummary!!
-    assertThat(
-        requestDuration
-          .labels("Http2ConnectivityTest.DisconnectWithLargeRequestAction", "unknown", "499")
-          .get()
-          .count
-          .toInt()
-      )
-      .isEqualTo(1)
+    val count = registry.getSample(
+      "histo_http_request_latency_ms",
+      arrayOf("action" to "Http2ConnectivityTest.DisconnectWithLargeRequestAction", "caller" to "unknown", "code" to "499"),
+      sampleName = "histo_http_request_latency_ms_count",
+    )?.value?.toInt()
+    assertThat(count).isEqualTo(1)
   }
 
   @Test
@@ -204,15 +198,12 @@ class Http2ConnectivityTest {
     val code = module.lockInterceptorFactory.queue.take()
     assertThat(code).isEqualTo(499)
 
-    val requestDuration = metricsInterceptorFactory.requestDurationSummary!!
-    assertThat(
-        requestDuration
-          .labels("Http2ConnectivityTest.DisconnectWithLargeRequestAction", "unknown", "499")
-          .get()
-          .count
-          .toInt()
-      )
-      .isEqualTo(1)
+    val count = registry.getSample(
+      "histo_http_request_latency_ms",
+      arrayOf("action" to "Http2ConnectivityTest.DisconnectWithLargeRequestAction", "caller" to "unknown", "code" to "499"),
+      sampleName = "histo_http_request_latency_ms_count",
+    )?.value?.toInt()
+    assertThat(count).isEqualTo(1)
   }
 
   class HelloAction @Inject constructor() : WebAction {

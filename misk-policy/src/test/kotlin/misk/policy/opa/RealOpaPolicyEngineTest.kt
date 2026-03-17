@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.policy.opa
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.inject.Injector
 import com.google.inject.Module
 import com.google.inject.Provides
@@ -9,8 +12,8 @@ import jakarta.inject.Inject
 import jakarta.inject.Named
 import jakarta.inject.Singleton
 import misk.inject.KAbstractModule
-import misk.metrics.v2.FakeMetrics
-import misk.metrics.v2.FakeMetricsModule
+import misk.metrics.pal.FakePalMetrics
+import misk.metrics.pal.FakePalMetricsModule
 import misk.testing.MiskTest
 import misk.testing.MiskTestModule
 import misk.web.mediatype.MediaTypes.APPLICATION_JSON
@@ -35,7 +38,7 @@ internal class RealOpaPolicyEngineTest {
   val module: Module =
     object : KAbstractModule() {
       override fun configure() {
-        install(FakeMetricsModule())
+        install(FakePalMetricsModule())
         bind<OpaMetrics>().to<MiskOpaMetrics>()
         bind<OpaPolicyEngine>().to<RealOpaPolicyEngine>()
       }
@@ -49,7 +52,7 @@ internal class RealOpaPolicyEngineTest {
 
   @Inject lateinit var opaApi: OpaApi
   @Inject lateinit var opaPolicyEngine: OpaPolicyEngine
-  @Inject lateinit var fakeMetrics: FakeMetrics
+  @Inject lateinit var fakeMetrics: FakePalMetrics
   @Inject lateinit var injector: Injector
 
   val metricsPayload =
@@ -92,23 +95,25 @@ internal class RealOpaPolicyEngineTest {
     assertThat(evaluate).isEqualTo(BasicResponse("a"))
     assertThat(evaluate.metrics).isNotNull
 
-    assertThat(fakeMetrics.get(OpaMetrics.Names.opa_server_query_cache_hit.name, "document" to "test")).isEqualTo(1.0)
-    assertThat(fakeMetrics.summaryCount(OpaMetrics.Names.opa_rego_query_eval.name, "document" to "test")).isEqualTo(1.0)
-    assertThat(fakeMetrics.summaryMean(OpaMetrics.Names.opa_rego_query_eval.name, "document" to "test"))
+    assertThat(fakeMetrics.getCounter(OpaMetrics.Names.opa_server_query_cache_hit.name, "test")).isEqualTo(1.0)
+    assertThat(fakeMetrics.getHistogramCount(OpaMetrics.Names.opa_rego_query_eval.name, "test")).isEqualTo(1L)
+    assertThat(fakeMetrics.getHistogramSum(OpaMetrics.Names.opa_rego_query_eval.name, "test")!! /
+      fakeMetrics.getHistogramCount(OpaMetrics.Names.opa_rego_query_eval.name, "test")!!)
       .isEqualTo(283083.0)
 
-    assertThat(fakeMetrics.get(OpaMetrics.Names.opa_rego_evaluated.name, "document" to "test")).isEqualTo(1.0)
+    assertThat(fakeMetrics.getCounter(OpaMetrics.Names.opa_rego_evaluated.name, "test")).isEqualTo(1.0)
 
     evaluate = opaPolicyEngine.evaluate("test")
 
-    assertThat(fakeMetrics.get(OpaMetrics.Names.opa_server_query_cache_hit.name, "document" to "test")).isEqualTo(2.0)
-    assertThat(fakeMetrics.summaryCount(OpaMetrics.Names.opa_rego_query_eval.name, "document" to "test")).isEqualTo(2.0)
-    assertThat(fakeMetrics.summaryMean(OpaMetrics.Names.opa_rego_query_eval.name, "document" to "test"))
+    assertThat(fakeMetrics.getCounter(OpaMetrics.Names.opa_server_query_cache_hit.name, "test")).isEqualTo(2.0)
+    assertThat(fakeMetrics.getHistogramCount(OpaMetrics.Names.opa_rego_query_eval.name, "test")).isEqualTo(2L)
+    assertThat(fakeMetrics.getHistogramSum(OpaMetrics.Names.opa_rego_query_eval.name, "test")!! /
+      fakeMetrics.getHistogramCount(OpaMetrics.Names.opa_rego_query_eval.name, "test")!!)
       .isEqualTo(283083.0)
 
-    assertThat(fakeMetrics.get(OpaMetrics.Names.opa_rego_evaluated.name, "document" to "test")).isEqualTo(2.0)
+    assertThat(fakeMetrics.getCounter(OpaMetrics.Names.opa_rego_evaluated.name, "test")).isEqualTo(2.0)
 
-    assertThat(fakeMetrics.get(OpaMetrics.Names.opa_rego_evaluated.name, "document" to "test")).isEqualTo(2.0)
+    assertThat(fakeMetrics.getCounter(OpaMetrics.Names.opa_rego_evaluated.name, "test")).isEqualTo(2.0)
   }
 
   @Test

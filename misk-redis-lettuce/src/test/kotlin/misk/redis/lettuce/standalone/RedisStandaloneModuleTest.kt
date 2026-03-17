@@ -13,11 +13,16 @@ import misk.redis.lettuce.RedisModule
 import misk.redis.lettuce.RedisNodeConfig
 import misk.redis.lettuce.RedisReplicationGroupConfig
 import misk.redis.lettuce.RedisService
+import misk.metrics.get
 import misk.redis.lettuce.metrics.RedisClientMetrics
+import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.MAX_TOTAL_CONNECTIONS
+import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.NAME_LABEL
+import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.REPLICATION_GROUP_ID_LABEL
 import misk.redis.lettuce.redisPort
 import misk.redis2.metrics.RedisClientMetricsCommandLatencyRecorder
 import misk.testing.MiskTest
 import misk.testing.MiskTestModule
+import io.prometheus.client.CollectorRegistry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.DynamicTest.dynamicTest
@@ -60,6 +65,7 @@ internal class RedisStandaloneModuleTest {
 
   @Inject lateinit var client: RedisClient
   @Inject lateinit var metrics: RedisClientMetrics
+  @Inject lateinit var registry: CollectorRegistry
   @Inject lateinit var redisService: RedisService
   @Inject lateinit var readWriteConnectionProvider: ReadWriteConnectionProvider
   @Inject lateinit var readOnlyConnectionProvider: ReadOnlyConnectionProvider
@@ -114,13 +120,15 @@ internal class RedisStandaloneModuleTest {
   @TestFactory
   fun `verify that the pooled connection provider is registered in the RedisClientMetrics`() {
     connectionProviders.map { (name, connectionProvider) ->
-      dynamicTest("testthe connection provider '$name' is registered in the RedisClientMetrics ") {
-        val providerPool =
-          (connectionProvider as PooledStatefulRedisConnectionProvider<String, String>).poolFuture.get()
-        val metricsReference = metrics.maxTotalConnectionsGauge.labels(clientName, replicationGroupId).reference
+      dynamicTest("test the connection provider '$name' is registered in the RedisClientMetrics") {
+        val gaugeValue = registry.get(
+          MAX_TOTAL_CONNECTIONS,
+          NAME_LABEL to clientName,
+          REPLICATION_GROUP_ID_LABEL to replicationGroupId,
+        )
         assertTrue(
           message = "pool in '$clientName' should be registered in the RedisClientMetrics",
-          actual = metricsReference.get() === providerPool,
+          actual = gaugeValue != null && gaugeValue > 0.0,
         )
       }
     }

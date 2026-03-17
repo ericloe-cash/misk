@@ -14,11 +14,16 @@ import misk.redis.lettuce.RedisClusterGroupConfig
 import misk.redis.lettuce.RedisModule
 import misk.redis.lettuce.RedisNodeConfig
 import misk.redis.lettuce.RedisService
+import misk.metrics.get
 import misk.redis.lettuce.metrics.RedisClientMetrics
+import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.MAX_TOTAL_CONNECTIONS
+import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.NAME_LABEL
+import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.REPLICATION_GROUP_ID_LABEL
 import misk.redis.lettuce.redisSeedPort
 import misk.redis2.metrics.RedisClientMetricsCommandLatencyRecorder
 import misk.testing.MiskTest
 import misk.testing.MiskTestModule
+import io.prometheus.client.CollectorRegistry
 import org.junit.jupiter.api.DisplayName
 import wisp.deployment.TESTING
 
@@ -58,6 +63,7 @@ internal class RedisClusterModuleTest {
   @Inject lateinit var client: RedisClusterClient
   @Inject lateinit var redisService: RedisService
   @Inject lateinit var metrics: RedisClientMetrics
+  @Inject lateinit var registry: CollectorRegistry
   @Inject lateinit var connectionProvider: ClusterConnectionProvider
 
   @Test
@@ -96,12 +102,14 @@ internal class RedisClusterModuleTest {
 
   @Test
   fun `verify that the pooled connection provider is registered in the RedisClientMetrics`() {
-    val providerPool =
-      (connectionProvider as PooledStatefulRedisClusterConnectionProvider<String, String>).poolFuture.get()
-    val metricsReference = metrics.maxTotalConnectionsGauge.labels(clientName, replicationGroupId).reference
+    val gaugeValue = registry.get(
+      MAX_TOTAL_CONNECTIONS,
+      NAME_LABEL to clientName,
+      REPLICATION_GROUP_ID_LABEL to replicationGroupId,
+    )
     assertTrue(
       message = "pool in '$clientName' should be registered in the RedisClientMetrics",
-      actual = metricsReference.get() === providerPool,
+      actual = gaugeValue != null && gaugeValue > 0.0,
     )
   }
 

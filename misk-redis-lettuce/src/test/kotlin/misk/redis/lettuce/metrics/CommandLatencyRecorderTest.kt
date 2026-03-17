@@ -2,12 +2,14 @@ package misk.redis.lettuce.metrics
 
 import com.google.inject.Module
 import io.lettuce.core.RedisClient
+import io.prometheus.client.CollectorRegistry
 import jakarta.inject.Inject
 import kotlin.test.DefaultAsserter.assertEquals
 import kotlin.test.Test
 import misk.MiskTestingServiceModule
 import misk.environment.DeploymentModule
 import misk.inject.KAbstractModule
+import misk.metrics.getSample
 import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.FIRST_RESPONSE_TIME
 import misk.redis.lettuce.metrics.RedisClientMetrics.Companion.OPERATION_TIME
 import misk.redis.lettuce.redisPort
@@ -36,6 +38,7 @@ internal class CommandLatencyRecorderTest {
     }
 
   @Inject internal lateinit var clientMetrics: RedisClientMetrics
+  @Inject internal lateinit var registry: CollectorRegistry
   private lateinit var redisClient: RedisClient
 
   @BeforeEach
@@ -64,12 +67,13 @@ internal class CommandLatencyRecorderTest {
   fun `test ping command has first response time latencies registered`() {
     redisClient.withConnectionBlocking {
       assertEquals("result is PONG", "PONG", sync().ping())
-      clientMetrics.firstResponseTime.collect().also {
-        assert(it.size == 1) { "Expected 1 operation time metric" }
-        it.first().also { metricFamilySamples ->
-          assert(metricFamilySamples.name == FIRST_RESPONSE_TIME) { "Expected histogram named $FIRST_RESPONSE_TIME" }
-        }
-      }
+      val sample = registry.getSample(
+        FIRST_RESPONSE_TIME,
+        arrayOf("replication_group_id" to "test_replication_group_001", "command" to "PING"),
+        sampleName = "${FIRST_RESPONSE_TIME}_count",
+      )
+      assert(sample != null) { "Expected first response time metric for PING" }
+      assert(sample!!.value > 0.0) { "Expected at least one observation" }
     }
   }
 
@@ -77,12 +81,13 @@ internal class CommandLatencyRecorderTest {
   fun `test ping command has operation time latencies registered`() {
     redisClient.withConnectionBlocking {
       assertEquals("result is PONG", "PONG", sync().ping())
-      clientMetrics.operationTime.collect().also {
-        assert(it.size == 1) { "Expected 1 operation time metric" }
-        it.first().also { metricFamilySamples ->
-          assert(metricFamilySamples.name == OPERATION_TIME) { "Expected histogram named $OPERATION_TIME" }
-        }
-      }
+      val sample = registry.getSample(
+        OPERATION_TIME,
+        arrayOf("replication_group_id" to "test_replication_group_001", "command" to "PING"),
+        sampleName = "${OPERATION_TIME}_count",
+      )
+      assert(sample != null) { "Expected operation time metric for PING" }
+      assert(sample!!.value > 0.0) { "Expected at least one observation" }
     }
   }
 }

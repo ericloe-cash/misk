@@ -1,12 +1,15 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.redis.lettuce.metrics
 
+import misk.annotation.ExperimentalMiskApi
 import io.lettuce.core.support.BoundedAsyncPool
-import io.prometheus.client.Histogram
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import kotlin.time.Duration
-import misk.metrics.v2.Metrics
-import misk.metrics.v2.ProvidedGauge
+import misk.metrics.pal.PalHistogram
+import misk.metrics.pal.PalMetrics
+import misk.metrics.pal.PalProvidedGauge
 
 /**
  * Metrics collector for Redis client operations and connection pool statistics.
@@ -59,7 +62,7 @@ import misk.metrics.v2.ProvidedGauge
  * ```
  */
 @Singleton
-internal class RedisClientMetrics @Inject constructor(metrics: Metrics) {
+internal class RedisClientMetrics @Inject constructor(metrics: PalMetrics) {
 
   /**
    * Registers connection pool metrics for a Redis client instance.
@@ -132,7 +135,7 @@ internal class RedisClientMetrics @Inject constructor(metrics: Metrics) {
     operationTime.labels(replicationGroupId, commandType).observe(value.inWholeMilliseconds.toDouble())
   }
 
-  internal val maxTotalConnectionsGauge: ProvidedGauge =
+  internal val maxTotalConnectionsGauge: PalProvidedGauge =
     metrics.providedGauge(
       name = MAX_TOTAL_CONNECTIONS,
       help =
@@ -144,7 +147,7 @@ internal class RedisClientMetrics @Inject constructor(metrics: Metrics) {
       labelNames = listOf(NAME_LABEL, REPLICATION_GROUP_ID_LABEL),
     )
 
-  internal val maxIdleConnectionsGauge: ProvidedGauge =
+  internal val maxIdleConnectionsGauge: PalProvidedGauge =
     metrics.providedGauge(
       name = MAX_IDLE_CONNECTIONS,
       help =
@@ -156,7 +159,7 @@ internal class RedisClientMetrics @Inject constructor(metrics: Metrics) {
       labelNames = listOf(NAME_LABEL, REPLICATION_GROUP_ID_LABEL),
     )
 
-  internal val minIdleConnectionsGauge: ProvidedGauge =
+  internal val minIdleConnectionsGauge: PalProvidedGauge =
     metrics.providedGauge(
       name = MIN_IDLE_CONNECTIONS,
       help =
@@ -168,28 +171,28 @@ internal class RedisClientMetrics @Inject constructor(metrics: Metrics) {
       labelNames = listOf(NAME_LABEL, REPLICATION_GROUP_ID_LABEL),
     )
 
-  internal val activeConnectionsGauge: ProvidedGauge =
+  internal val activeConnectionsGauge: PalProvidedGauge =
     metrics.providedGauge(
       name = ACTIVE_CONNECTIONS,
       help = "Current number of active connections for the misk-redis2 client connection pool.",
       labelNames = listOf(NAME_LABEL, REPLICATION_GROUP_ID_LABEL),
     )
 
-  internal val idleConnectionsGauge: ProvidedGauge =
+  internal val idleConnectionsGauge: PalProvidedGauge =
     metrics.providedGauge(
       name = IDLE_CONNECTIONS,
       help = "Current number of idle connections for the misk-redis2 client connection pool.",
       labelNames = listOf(NAME_LABEL, REPLICATION_GROUP_ID_LABEL),
     )
 
-  internal val firstResponseTime: Histogram =
+  internal val firstResponseTime: PalHistogram =
     metrics.histogram(
       name = FIRST_RESPONSE_TIME,
       help = "The time it took in milliseconds, as reported by the client, to get a first response from an operation.",
       labelNames = listOf(REPLICATION_GROUP_ID_LABEL, COMMAND_LABEL),
     )
 
-  internal val operationTime: Histogram =
+  internal val operationTime: PalHistogram =
     metrics.histogram(
       name = OPERATION_TIME,
       help = "The time it took in milliseconds, as reported by the client, to complete an operation.",

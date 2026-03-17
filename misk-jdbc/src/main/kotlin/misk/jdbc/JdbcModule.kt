@@ -183,6 +183,7 @@ constructor(
     bind(keyOf<DataSourceService>(qualifier))
       .toProvider(
         object : Provider<DataSourceService> {
+          // TODO(pal-migration): Injects CollectorRegistry directly for HikariCP metrics.
           @com.google.inject.Inject(optional = true) var registry: CollectorRegistry? = null
 
           override fun get(): DataSourceService {

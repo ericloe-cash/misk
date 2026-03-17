@@ -1,8 +1,10 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.web.interceptors
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.common.base.Stopwatch
 import com.google.inject.TypeLiteral
-import io.prometheus.client.Histogram
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.time.Duration
@@ -10,7 +12,8 @@ import kotlin.reflect.KClass
 import misk.Action
 import misk.MiskCaller
 import misk.inject.KAbstractModule
-import misk.metrics.v2.Metrics
+import misk.metrics.pal.PalHistogram
+import misk.metrics.pal.PalMetrics
 import misk.scope.ActionScoped
 import misk.web.NetworkChain
 import misk.web.NetworkInterceptor
@@ -26,7 +29,7 @@ import misk.web.NetworkInterceptor
  */
 class ExclusiveTimingInterceptor(
   private val excludedTime: ThreadLocal<ExcludedTime>,
-  private val metric: Histogram,
+  private val metric: PalHistogram,
   private val caller: ActionScoped<MiskCaller?>,
   private val actionName: String,
   private val getAdditionalTagValues: (ExcludedTime) -> List<String>,
@@ -57,7 +60,7 @@ class ExclusiveTimingInterceptor(
   @Inject
   constructor(
     private val excludedTime: ThreadLocal<ExcludedTime>,
-    metrics: Metrics,
+    metrics: PalMetrics,
     private val caller: ActionScoped<MiskCaller?>,
   ) : NetworkInterceptor.Factory {
     open val metricName = "histo_http_request_exclusive_latency_ms"

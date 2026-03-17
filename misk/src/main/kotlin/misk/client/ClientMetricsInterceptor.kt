@@ -1,18 +1,19 @@
+@file:OptIn(ExperimentalMiskApi::class)
+
 package misk.client
 
+import misk.annotation.ExperimentalMiskApi
 import com.google.common.base.Stopwatch
 import com.google.common.base.Ticker
 import com.squareup.wire.GrpcMethod
 import com.squareup.wire.GrpcStatus
-import io.prometheus.client.Histogram
-import io.prometheus.client.Summary
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.concurrent.TimeUnit
-import misk.metrics.backends.prometheus.PrometheusConfig
-import misk.metrics.v2.Metrics
+import misk.metrics.pal.PalHistogram
+import misk.metrics.pal.PalMetrics
 import okhttp3.Interceptor
 import okhttp3.Response
 import okhttp3.ResponseBody
@@ -21,8 +22,7 @@ import retrofit2.Invocation
 class ClientMetricsInterceptor
 private constructor(
   val clientName: String,
-  private val requestDurationSummary: Summary?,
-  private val requestDurationHistogram: Histogram,
+  private val requestDurationHistogram: PalHistogram,
 ) : Interceptor {
 
   override fun intercept(chain: Interceptor.Chain): Response {
@@ -46,14 +46,12 @@ private constructor(
         .build()
     } catch (e: SocketTimeoutException) {
       val elapsedMillis = stopwatch.stop().elapsed(TimeUnit.MILLISECONDS).toDouble()
-      requestDurationSummary?.labels(actionName, "timeout")?.observe(elapsedMillis)
       requestDurationHistogram.labels(actionName, "timeout").observe(elapsedMillis)
       throw e
     } catch (e: Exception) {
       // Something else happened while the connection was in progress and we didn't receive
       // a complete response. We still want to record any long-running calls, however.
       val elapsedMillis = stopwatch.stop().elapsed(TimeUnit.MILLISECONDS).toDouble()
-      requestDurationSummary?.labels(actionName, "incomplete-response")?.observe(elapsedMillis)
       requestDurationHistogram.labels(actionName, "incomplete-response").observe(elapsedMillis)
       throw e
     }
@@ -88,7 +86,6 @@ private constructor(
       }
     val grpcStatus = grpcStatusHeader?.toIntOrNull()
     val code = grpcStatusToHttpCode(grpcStatus) ?: response.code
-    requestDurationSummary?.labels(actionName, "$code")?.observe(elapsedMillis)
     requestDurationHistogram.labels(actionName, "$code").observe(elapsedMillis)
   }
 
@@ -124,19 +121,7 @@ private constructor(
   }
 
   @Singleton
-  class Factory @Inject internal constructor(m: Metrics, config: PrometheusConfig) {
-    internal val requestDurationSummary =
-      when (config.disable_default_summary_metrics) {
-        true -> null
-        false ->
-          m.summary(
-            name = "client_http_request_latency_ms",
-            help = "count and duration in ms of outgoing client requests",
-            labelNames = listOf("action", "code"),
-            maxAgeSeconds = config.max_age_in_seconds,
-          )
-      }
-
+  class Factory @Inject internal constructor(m: PalMetrics) {
     internal val requestDurationHistogram =
       m.histogram(
         name = "histo_client_http_request_latency_ms",
@@ -145,7 +130,7 @@ private constructor(
       )
 
     fun create(clientName: String) =
-      ClientMetricsInterceptor(clientName, requestDurationSummary, requestDurationHistogram)
+      ClientMetricsInterceptor(clientName, requestDurationHistogram)
   }
 
   private class TrailerAwareResponseBody(private val delegate: ResponseBody, private val func: () -> Unit) :

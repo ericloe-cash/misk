@@ -37,6 +37,7 @@ dependencies {
   testImplementation(libs.kotlinxCoroutinesTest)
   testImplementation(libs.kotestAssertions)
   testImplementation(project(":misk-testing"))
+  testImplementation(testFixtures(project(":misk-metrics")))
   testImplementation(testFixtures(project(":misk-redis-lettuce")))
 
   testFixturesImplementation(project(":misk-testing"))
