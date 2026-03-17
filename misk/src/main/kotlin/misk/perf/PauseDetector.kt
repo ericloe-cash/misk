@@ -31,7 +31,7 @@ constructor(
   private val config: PauseDetectorConfig,
   @ForPauseDetector private val ticker: Ticker,
   @ForPauseDetector private val sleeper: Sleeper,
-  val metrics: PalMetrics,
+  private val metrics: PalMetrics,
 ) : AbstractExecutionThreadService() {
 
   /** Log levels by pause time sorted by severity descending */
